@@ -2,6 +2,8 @@
 
 This document proposes observable semantics. It does not mandate an agent framework, storage system, model, or network protocol. The accompanying JSON format covers only a small static planning subset of this document; runtime semantics are not implemented.
 
+This is the orchestration part of the [three-part architecture](architecture.md). Execution and connection/permissions have separate proposed contracts.
+
 ## Entities
 
 | Entity | Meaning |

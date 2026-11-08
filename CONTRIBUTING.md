@@ -18,3 +18,9 @@ Keep the specification, examples, validator, and tests consistent. A runtime fea
 The initial repository maintainer makes merge decisions; significant semantic changes should receive public RFC discussion. Recommendations can be revised or removed when evidence contradicts them. No certification, standards-body affiliation, or consensus is implied.
 
 By contributing, you agree that your contributions are licensed under this repository's MIT license. Be respectful, critique ideas rather than people, and redact sensitive information from reports.
+
+## Public design and private implementations
+
+Use neutral capability and transport names in the architecture. Do not commit private bridge source, hostnames, installation paths, pairing material, browser profiles, or credentials. Keep future integrations optional and explicit about supported capabilities. Preserve required attribution and license notices for any third-party code; removing branding is not a substitute for a license review.
+
+Check local Markdown links and parse all JSON examples before submitting documentation changes. State whether new behavior is proposed, implemented, or verified; do not conflate these states.

@@ -6,10 +6,23 @@ Agents can execute work. Orchestration decides which work should happen, who own
 
 This repository develops a shared vocabulary, practical patterns, and testable contracts for that coordination. It covers a portfolio of goals and tasks—not only a single prompt delegated to several agents.
 
-**Status: experimental draft v0.1.** This is a community proposal, not an official standard, production runtime, or claim of consensus. Existing research and frameworks already address parts of this problem; our contribution is a coherent, falsifiable starting point for multi-task coordination. The initial draft grew out of the Agent Spaces concept, but is independent of any provider or framework.
+**Status: experimental draft v0.1.** This is a community proposal, not an official standard, production runtime, or claim of consensus. Existing research and frameworks already address parts of this problem; our contribution is a coherent, falsifiable starting point for multi-task coordination. The design is independent of any provider, organization, private bridge installation, or framework. Research citations identify sources and do not imply affiliation or endorsement.
+
+## Three parts, one repository
+
+| Part | Responsibility | Design |
+| --- | --- | --- |
+| **Orchestration** | Coordinate agents and tasks, dependencies, priorities, ownership, budgets, and outcomes. | [Coordination specification](docs/specification.md) |
+| **Execution** | Describe agent sessions, terminal jobs, files, browsers, desktops, and artifact transfer through capability-based adapters. | [Execution contract](docs/execution.md) |
+| **Connection and permissions** | Identify targets, authenticate connections, scope access, isolate sessions, and recover safely. | [Connection design](docs/connections.md) |
+
+The [architecture](docs/architecture.md) explains how these parts cooperate. The [capability catalog](docs/capabilities.md) describes intended coverage; these adapter capabilities are proposals, not working integrations. The initial neutral profiles are **local service** and **remote SSH**. Existing private bridges remain outside this repository and unchanged.
+
+This is a public-facing design prepared in a private repository. Repository visibility and the MIT license are separate: the license does not make a private GitHub repository public.
 
 ## Start here
 
+- [Three-part walkthrough](examples/three_part_walkthrough.md): concurrent work across neutral environments.
 - [Design principles](docs/principles.md): proposed practices and their tradeoffs.
 - [Coordination specification](docs/specification.md): goals, tasks, attempts, ownership, scheduling, and completion.
 - [Patterns](docs/patterns.md): when to use different orchestration structures.

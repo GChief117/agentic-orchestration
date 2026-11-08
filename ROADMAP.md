@@ -7,6 +7,13 @@
 - [x] Concrete multi-goal plan with static validation and tests.
 - [x] Research bibliography and experiment methodology.
 
+## Three-part public design
+
+- [x] Separate orchestration, execution, and connection/permissions responsibilities.
+- [x] Document a neutral capability catalog and proposed execution contract.
+- [x] Describe local-service and remote-SSH profiles without private installation details.
+- [x] Add a cross-environment walkthrough and explicit implementation boundaries.
+
 ## Next — validate the design
 
 - [ ] Gather real coordination failures and competing approaches through RFCs.

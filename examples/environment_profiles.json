@@ -1,0 +1,29 @@
+{
+  "status": "illustrative design only; no adapter implemented",
+  "profiles": [
+    {
+      "id": "local-service-example",
+      "transport": "authenticated-local-service",
+      "endpoint_ref": "private-config:local-service",
+      "candidate_capabilities": [
+        "agent.sessions",
+        "terminal.jobs",
+        "files",
+        "artifacts.transfer",
+        "browser.operations"
+      ],
+      "note": "Only advertise capabilities actually implemented and authorized."
+    },
+    {
+      "id": "remote-ssh-example",
+      "transport": "ssh",
+      "endpoint_ref": "private-config:remote-ssh",
+      "candidate_capabilities": [
+        "terminal.jobs",
+        "files",
+        "artifacts.transfer"
+      ],
+      "note": "Agent and browser helpers are optional additions requiring separate verification."
+    }
+  ]
+}
