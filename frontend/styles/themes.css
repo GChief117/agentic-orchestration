@@ -391,7 +391,9 @@
   font-size: 10px;
 }
 .brand-variant-seal .brand-icon {
-  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  border-radius: 0;
   font:
     400 25px/1 Georgia,
     serif;

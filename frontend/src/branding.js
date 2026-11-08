@@ -5,7 +5,7 @@ export const BRAND_STYLES = {
   monogram: "Framed monogram",
   connected: "Connected nodes",
   minimal: "Minimal accent",
-  seal: "Circular seal",
+  seal: "Square seal",
 };
 
 /** Render one trusted brand lockup for both the sidebar and its exact preview. */
