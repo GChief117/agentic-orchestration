@@ -239,3 +239,24 @@
     transition: none;
   }
 }
+
+/* The real card follows the pointer; its original slot remains a visible reference. */
+.org-node.dragging {
+  pointer-events: none;
+  filter: drop-shadow(0 6px 10px #23462b33);
+}
+.org-node.dragging rect {
+  fill: #fff;
+  stroke: #34703e;
+  stroke-width: 2.5;
+}
+.organization-chart svg.is-dragging {
+  cursor: grabbing;
+}
+.org-drag-origin {
+  fill: #eff5ea;
+  stroke: #b7cdb0;
+  stroke-dasharray: 5 4;
+  stroke-width: 1.5;
+  pointer-events: none;
+}

@@ -322,9 +322,14 @@ export function mountOrganizationEditor({
       last: point(event, svg),
       moved: false,
       candidate: null,
+      sourceElement: node ? event.target.closest("[data-org-node]") : null,
+      sourcePosition: node
+        ? organizationLayout(agents).nodes.find((item) => item.key === node)
+        : null,
     };
   }
-  /** Preview a valid drop target, or shift the viewBox when dragging the background. */
+  /** Move the actual card with the pointer and preview valid manager targets.
+   * Background drags pan the viewBox without changing reporting relationships. */
   function pointerMove(event) {
     if (!gesture) return;
     if (
@@ -355,17 +360,41 @@ export function mountOrganizationEditor({
       );
       return;
     }
-    const source = organizationLayout(agents).nodes.find(
-      (node) => node.key === gesture.node,
-    );
+    const source = gesture.sourcePosition;
     const cursor = point(event, gesture.svg);
-    const preview = root.querySelector("[data-drag-link]");
-    if (source && preview) {
-      const x = source.x + source.width / 2,
-        y = source.y + source.height;
-      preview.setAttribute(
-        "d",
-        `M ${x} ${y} C ${x} ${y + 35} ${cursor.x} ${cursor.y - 35} ${cursor.x} ${cursor.y}`,
+    if (source && gesture.sourceElement) {
+      if (!gesture.sourceElement.classList.contains("dragging")) {
+        selected = gesture.node;
+        root
+          .querySelectorAll(".org-node.selected")
+          .forEach((element) => element.classList.remove("selected"));
+        gesture.sourceElement.classList.add("selected", "dragging");
+        gesture.sourceElement.querySelector("title")?.remove();
+        gesture.svg.classList.add("is-dragging");
+        const placeholder = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "rect",
+        );
+        for (const [name, value] of Object.entries({
+          x: source.x,
+          y: source.y,
+          width: source.width,
+          height: source.height,
+          rx: 12,
+          class: "org-drag-origin",
+        }))
+          placeholder.setAttribute(name, String(value));
+        gesture.svg.append(placeholder);
+        gesture.svg.append(gesture.sourceElement);
+        root.querySelector("[data-node-inspector]").innerHTML = inspector();
+      }
+      gesture.position = {
+        x: source.x + cursor.x - gesture.last.x,
+        y: source.y + cursor.y - gesture.last.y,
+      };
+      gesture.sourceElement.setAttribute(
+        "transform",
+        `translate(${gesture.position.x} ${gesture.position.y})`,
       );
     }
     const hit = document
@@ -385,6 +414,23 @@ export function mountOrganizationEditor({
       .querySelectorAll(".drop-target")
       .forEach((element) => element.classList.remove("drop-target"));
     if (gesture.candidate) hit.classList.add("drop-target");
+    const preview = root.querySelector("[data-drag-link]");
+    const manager =
+      gesture.candidate &&
+      organizationLayout(agents).nodes.find(
+        (node) => node.key === gesture.candidate,
+      );
+    if (manager && gesture.position && source) {
+      const x = manager.x + manager.width / 2,
+        y = manager.y + manager.height;
+      const childX = gesture.position.x + source.width / 2,
+        childY = gesture.position.y;
+      const middle = (y + childY) / 2;
+      preview?.setAttribute(
+        "d",
+        `M ${x} ${y} C ${x} ${middle} ${childX} ${middle} ${childX} ${childY}`,
+      );
+    } else preview?.setAttribute("d", "");
     error(
       gesture.candidate
         ? "Release to change this agent’s manager."
@@ -418,30 +464,42 @@ export function mountOrganizationEditor({
       document.defaultView.setTimeout(() => {
         ignoreClick = false;
       }, 0);
-    if (ended.moved && ended.node && ended.candidate) {
-      agents = reparentAgent(
-        agents,
-        ended.node,
-        ended.candidate === "__owner__" ? "" : ended.candidate,
-      );
-      selected = ended.node;
-      center = null;
-      zoom = 1;
-      publish();
+    if (ended.moved && ended.node) {
+      if (ended.candidate) {
+        agents = reparentAgent(
+          agents,
+          ended.node,
+          ended.candidate === "__owner__" ? "" : ended.candidate,
+        );
+        selected = ended.node;
+        center = null;
+        zoom = 1;
+        publish();
+      }
       render();
-    } else
+      if (!ended.candidate)
+        error(
+          "No reporting change. Drop the card on its new manager to move it.",
+        );
+    }
+  }
+
+  /** Abort a cancelled gesture without changing any reporting relationship. */
+  function pointerCancel() {
+    const movedCard = gesture?.moved && gesture.node;
+    gesture = null;
+    ignoreClick = false;
+    if (movedCard) render();
+    else {
+      root.querySelector("[data-drag-link]")?.setAttribute("d", "");
       root
         .querySelectorAll(".drop-target")
         .forEach((element) => element.classList.remove("drop-target"));
+    }
   }
-  /** Abort a cancelled gesture without changing any reporting relationship. */
-  function pointerCancel() {
-    root.querySelector("[data-drag-link]")?.setAttribute("d", "");
-    gesture = null;
-    ignoreClick = false;
-    root
-      .querySelectorAll(".drop-target")
-      .forEach((element) => element.classList.remove("drop-target"));
+  /** Keep browser-native image/text dragging from stealing chart pointer gestures. */
+  function nativeDrag(event) {
+    if (event.target.closest("[data-org-node]")) event.preventDefault();
   }
   /** Provide keyboard node selection; the inspector offers keyboard reparenting. */
   function keydown(event) {
@@ -459,6 +517,7 @@ export function mountOrganizationEditor({
   root.addEventListener("input", inputChange);
   root.addEventListener("change", change);
   root.addEventListener("pointerdown", pointerDown);
+  root.addEventListener("dragstart", nativeDrag);
   root.addEventListener("pointermove", pointerMove);
   root.addEventListener("pointerup", pointerUp);
   root.addEventListener("pointercancel", pointerCancel);
@@ -472,6 +531,7 @@ export function mountOrganizationEditor({
       root.removeEventListener("input", inputChange);
       root.removeEventListener("change", change);
       root.removeEventListener("pointerdown", pointerDown);
+      root.removeEventListener("dragstart", nativeDrag);
       root.removeEventListener("pointermove", pointerMove);
       root.removeEventListener("pointerup", pointerUp);
       root.removeEventListener("pointercancel", pointerCancel);

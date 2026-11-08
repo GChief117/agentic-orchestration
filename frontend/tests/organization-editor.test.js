@@ -226,3 +226,59 @@ test("pointer capture starts only after a drag crosses the movement threshold", 
   assert.equal(captures, 1);
   pointer(dom.window, svg, "pointercancel", 20, 20);
 });
+
+test("the actual agent block follows the pointer and snaps back on an invalid drop", (t) => {
+  const dom = new JSDOM('<div id="editor"></div>');
+  t.after(() => dom.window.close());
+  const document = dom.window.document,
+    root = document.querySelector("#editor");
+  const agents = guidedDraft().agents;
+  const editor = mountOrganizationEditor({ root, agents, maxConcurrency: 2 });
+  t.after(() => editor.destroy());
+  const svg = root.querySelector("svg");
+  const layout = organizationLayout(agents);
+  svg.getBoundingClientRect = () => ({
+    left: 0,
+    top: 0,
+    width: layout.width,
+    height: layout.height,
+  });
+  const source = root.querySelector('[data-org-agent="agent-2"]');
+  const location = layout.nodes.find((node) => node.key === "agent-2");
+  const initial = source.getAttribute("transform");
+  document.elementFromPoint = () => svg;
+  pointer(dom.window, source, "pointerdown", location.x + 10, location.y + 10);
+  pointer(dom.window, svg, "pointermove", location.x + 110, location.y + 50);
+  assert.equal(
+    source.getAttribute("transform"),
+    `translate(${location.x + 100} ${location.y + 40})`,
+  );
+  assert.ok(source.classList.contains("dragging"));
+  assert.ok(root.querySelector(".org-drag-origin"));
+  assert.equal(editor.snapshot().agents[1].reports_to, "agent-1");
+  pointer(dom.window, svg, "pointerup", location.x + 110, location.y + 50);
+  assert.equal(
+    root.querySelector('[data-org-agent="agent-2"]').getAttribute("transform"),
+    initial,
+  );
+  assert.equal(root.querySelector(".dragging"), null);
+  assert.equal(root.querySelector(".org-drag-origin"), null);
+});
+
+test("native drag events cannot take over an agent card", (t) => {
+  const dom = new JSDOM('<div id="editor"></div>');
+  t.after(() => dom.window.close());
+  const root = dom.window.document.querySelector("#editor");
+  const editor = mountOrganizationEditor({
+    root,
+    agents: guidedDraft().agents,
+    maxConcurrency: 2,
+  });
+  t.after(() => editor.destroy());
+  const event = new dom.window.Event("dragstart", {
+    bubbles: true,
+    cancelable: true,
+  });
+  root.querySelector('[data-org-agent="agent-2"]').dispatchEvent(event);
+  assert.ok(event.defaultPrevented);
+});
