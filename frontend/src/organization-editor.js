@@ -130,7 +130,7 @@ export function mountOrganizationEditor({
       )
       .join(
         "",
-      )}</select></label><details class="agent-settings"><summary>More settings</summary>${input("Role description", "role", agent.role)}${input("Responsibilities", "responsibilities", agent.responsibilities, { textarea: true, rows: 3 })}${input("Tasks this agent can run at once", "max_concurrency", agent.max_concurrency, { number: true })}<div class="capability-picker"><span class="label">Allowed actions</span>${Object.entries(
+      )}</select></label>${input("Tasks this agent can run at once", "max_concurrency", agent.max_concurrency, { number: true })}<details class="agent-settings"><summary>More settings</summary>${input("Role description", "role", agent.role)}${input("Responsibilities", "responsibilities", agent.responsibilities, { textarea: true, rows: 3 })}<div class="capability-picker"><span class="label">Allowed actions</span>${Object.entries(
       ACTIONS,
     )
       .map(
@@ -150,15 +150,6 @@ export function mountOrganizationEditor({
     concurrency = String(
       Math.max(1, Math.min(Number(concurrency) || 1, capacity)),
     );
-    const capacityOptions = [
-      ...new Set([
-        ...Array.from(
-          { length: Math.min(capacity, 8) },
-          (_, index) => index + 1,
-        ),
-        ...[capacity, Number(concurrency)].filter(Number.isSafeInteger),
-      ]),
-    ].sort((a, b) => a - b);
     root.innerHTML = `<div class="organization-editor"><div class="chart-toolbar"><div><strong>${agents.length} assigned agents</strong><span>Select a card to edit · drag it onto a new manager</span></div><div class="chart-add-controls"><select aria-label="New agent role" data-new-role>${Object.entries(
       ROLES,
     )
@@ -168,14 +159,7 @@ export function mountOrganizationEditor({
       )
       .join(
         "",
-      )}</select><button class="button primary" type="button" data-chart-action="add" title="Add a role reporting to the selected agent, or to you when Project owner is selected">+ Add role</button></div></div><div class="chart-editor-body"><section class="chart-workspace"><div class="chart-view-controls"><button type="button" class="button" data-chart-action="zoom-out" aria-label="Zoom out">−</button><span data-zoom-label></span><button type="button" class="button" data-chart-action="zoom-in" aria-label="Zoom in">+</button><button type="button" class="button" data-chart-action="fit">Fit team</button></div><div data-chart-canvas></div><p class="chart-message" data-chart-message role="status"></p><label class="field chart-capacity"><span>How much should run at once?</span><select aria-label="Project concurrency" data-project-concurrency>${capacityOptions
-      .map(
-        (count) =>
-          `<option value="${count}" ${Number(concurrency) === count ? "selected" : ""}>${count === 1 ? "One task at a time" : `Up to ${count} tasks at once`}</option>`,
-      )
-      .join(
-        "",
-      )}</select><small>Team membership is separate from simultaneous execution.</small></label></section><aside class="node-inspector" data-node-inspector>${inspector()}</aside></div></div>`;
+      )}</select><button class="button primary" type="button" data-chart-action="add" title="Add a role reporting to the selected agent, or to you when Project owner is selected">+ Add role</button></div></div><div class="chart-editor-body"><section class="chart-workspace"><div class="chart-view-controls"><button type="button" class="button" data-chart-action="zoom-out" aria-label="Zoom out">−</button><span data-zoom-label></span><button type="button" class="button" data-chart-action="zoom-in" aria-label="Zoom in">+</button><button type="button" class="button" data-chart-action="fit">Fit team</button></div><div data-chart-canvas></div><p class="chart-message" data-chart-message role="status"></p><div class="chart-capacity"><label class="field"><span>How much should run at once?</span><input type="number" min="1" step="1" aria-label="Project concurrency" data-project-concurrency value="${e(concurrency)}"><small>Enter a task limit or use the button below.</small></label><button type="button" class="button" data-chart-action="increase-tasks">+ Increase task limit</button><p class="muted">Team capacity: ${capacity} parallel tasks. Increasing above this adds slots to ${e((current() || agents[0]).name)}. Workspace limits still apply.</p></div></section><aside class="node-inspector" data-node-inspector>${inspector()}</aside></div></div>`;
     draw();
   }
   /** Add a role under the current selection and generate an unused internal key. */
@@ -197,6 +181,24 @@ export function mountOrganizationEditor({
     publish();
     render();
   }
+  /** Set the requested parallel task limit and explicitly allocate any extra slots. */
+  function setConcurrency(count) {
+    if (!Number.isSafeInteger(count) || count < 1)
+      throw new Error("Task limit must be a positive whole number.");
+    const capacity = agents.reduce(
+      (sum, agent) => sum + Number(agent.max_concurrency),
+      0,
+    );
+    if (count > capacity) {
+      const agent = current() || agents[0];
+      agent.max_concurrency = String(
+        Number(agent.max_concurrency) + count - capacity,
+      );
+    }
+    concurrency = String(count);
+    publish();
+    render();
+  }
   /** Dispatch toolbar/node actions; keep draft deletion separate from persistence. */
   function click(event) {
     if (ignoreClick) {
@@ -212,7 +214,8 @@ export function mountOrganizationEditor({
     const action = event.target.closest("[data-chart-action]")?.dataset
       .chartAction;
     try {
-      if (action === "add") add();
+      if (action === "increase-tasks") setConcurrency(Number(concurrency) + 1);
+      else if (action === "add") add();
       else if (action === "remove") {
         if (locked.has(selected))
           throw new Error(
@@ -257,8 +260,7 @@ export function mountOrganizationEditor({
   function change(event) {
     try {
       if (event.target.matches("[data-project-concurrency]")) {
-        concurrency = event.target.value;
-        publish();
+        setConcurrency(Number(event.target.value));
         return;
       }
       const agent = current();

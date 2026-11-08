@@ -133,7 +133,7 @@ test("invalid descendant drops and cancelled gestures leave reporting links inta
   assert.deepEqual(editor.snapshot(), before);
 });
 
-test("large configured capacity does not create an unbounded dropdown", (t) => {
+test("large configured capacity remains editable with a numeric task limit", (t) => {
   const dom = new JSDOM('<div id="editor"></div>');
   t.after(() => dom.window.close());
   const root = dom.window.document.querySelector("#editor");
@@ -141,9 +141,12 @@ test("large configured capacity does not create an unbounded dropdown", (t) => {
   agents[0].max_concurrency = "100";
   const editor = mountOrganizationEditor({ root, agents, maxConcurrency: 2 });
   t.after(() => editor.destroy());
-  assert.ok(
-    root.querySelectorAll("[data-project-concurrency] option").length <= 10,
-  );
+  const field = root.querySelector("[data-project-concurrency]");
+  assert.equal(field.type, "number");
+  assert.equal(field.value, "2");
+  field.value = "100";
+  field.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  assert.equal(editor.snapshot().max_concurrency, "100");
 });
 
 test("physical card clicks select the correct agent even when pointerup targets the SVG", (t) => {
@@ -281,4 +284,46 @@ test("native drag events cannot take over an agent card", (t) => {
   });
   root.querySelector('[data-org-agent="agent-2"]').dispatchEvent(event);
   assert.ok(event.defaultPrevented);
+});
+
+test("increasing task limit allocates slots without adding agents or changing roles", (t) => {
+  const dom = new JSDOM('<div id="editor"></div>');
+  t.after(() => dom.window.close());
+  const root = dom.window.document.querySelector("#editor");
+  const agents = guidedDraft().agents;
+  const editor = mountOrganizationEditor({ root, agents, maxConcurrency: 3 });
+  t.after(() => editor.destroy());
+  click(dom.window, root.querySelector('[data-org-agent="agent-2"]'));
+  assert.equal(
+    root.querySelector('[data-field="max_concurrency"]').closest("details"),
+    null,
+  );
+  click(dom.window, root.querySelector('[data-chart-action="increase-tasks"]'));
+  let result = editor.snapshot();
+  assert.equal(result.max_concurrency, "4");
+  assert.equal(result.agents.length, 3);
+  assert.equal(
+    result.agents.find((agent) => agent.key === "agent-2").max_concurrency,
+    "2",
+  );
+  const input = root.querySelector("[data-project-concurrency]");
+  input.value = "12";
+  input.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  result = editor.snapshot();
+  assert.equal(result.max_concurrency, "12");
+  assert.equal(
+    result.agents.reduce(
+      (sum, agent) => sum + Number(agent.max_concurrency),
+      0,
+    ),
+    12,
+  );
+  assert.deepEqual(
+    result.agents.map((agent) => agent.role),
+    agents.map((agent) => agent.role),
+  );
+  const invalid = root.querySelector("[data-project-concurrency]");
+  invalid.value = "1.5";
+  invalid.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  assert.equal(editor.snapshot().max_concurrency, "12");
 });
