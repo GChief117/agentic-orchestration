@@ -14,6 +14,14 @@
 - [x] Describe local-service and remote-SSH profiles without private installation details.
 - [x] Add a cross-environment walkthrough and explicit implementation boundaries.
 
+## Working backend foundation
+
+- [x] Backend-only command line and authenticated JSON API.
+- [x] Separate plan validation, persistence, scheduling, execution, and connection modules.
+- [x] Explicit task graphs, persistent attempts, cancellation, and restart handling.
+- [x] Canonical resource coordination and local file/terminal operations.
+- [x] Coordination and API integration tests.
+
 ## Next — validate the design
 
 - [ ] Gather real coordination failures and competing approaches through RFCs.

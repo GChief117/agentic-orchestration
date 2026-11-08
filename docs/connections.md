@@ -1,6 +1,8 @@
 # Connection and permissions
 
-Status: public-facing design requirements; these mechanisms are not implemented by this repository.
+Implementation status: a limited local backend now exists; see [backend implementation](backend.md) for the exact supported subset. The broader contracts below remain proposed.
+
+Status: public-facing design requirements; mechanisms beyond the documented local backend subset are not implemented.
 
 ## Target identity and transport
 

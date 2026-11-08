@@ -1,12 +1,23 @@
 # Agentic Orchestration
 
-**An open proposal for coordinating multiple agents across multiple concurrent tasks.**
+**A backend foundation and open design for coordinating multiple agents across concurrent tasks.**
 
 Agents can execute work. Orchestration decides which work should happen, who owns it, what can run together, and whether the result actually satisfies the goal.
 
 This repository develops a shared vocabulary, practical patterns, and testable contracts for that coordination. It covers a portfolio of goals and tasks—not only a single prompt delegated to several agents.
 
-**Status: experimental draft v0.1.** This is a community proposal, not an official standard, production runtime, or claim of consensus. Existing research and frameworks already address parts of this problem; our contribution is a coherent, falsifiable starting point for multi-task coordination. The design is independent of any provider, organization, private bridge installation, or framework. Research citations identify sources and do not imply affiliation or endorsement.
+**Status: experimental backend and draft design v0.1.** This is not an official standard, production-ready service, or claim of consensus. Existing research and frameworks already address parts of this problem; our contribution is a coherent, falsifiable starting point for multi-task coordination. The design is independent of any provider, organization, private bridge installation, or framework. Research citations identify sources and do not imply affiliation or endorsement.
+
+## Run the backend
+
+Python 3.10+ on macOS or Linux; no third-party runtime dependencies.
+
+```sh
+python3 -m orchestration examples/backend_goal.json --data-dir .runtime/example
+python3 app.py --port 8765
+```
+
+The first command runs an explicit task graph and prints its result. The second starts an authenticated JSON API. There is no frontend. The backend persists goals, tasks, attempts, and receipts, enforces dependencies and resource conflicts, and executes bounded local operations. Remote bridges and AI-provider sessions are not connected yet. See the [backend implementation](docs/backend.md) for the module map, request flow, API, and limitations.
 
 ## Three parts, one repository
 
@@ -21,6 +32,8 @@ The [architecture](docs/architecture.md) explains how these parts cooperate. The
 This is a public-facing design prepared in a private repository. Repository visibility and the MIT license are separate: the license does not make a private GitHub repository public.
 
 ## Start here
+
+- [Working backend](docs/backend.md): code organization and how modules coordinate.
 
 - [Three-part walkthrough](examples/three_part_walkthrough.md): concurrent work across neutral environments.
 - [Design principles](docs/principles.md): proposed practices and their tradeoffs.

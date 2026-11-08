@@ -1,4 +1,4 @@
-name: Validate proposal examples
+name: Validate backend and examples
 on: [push, pull_request]
 permissions:
   contents: read

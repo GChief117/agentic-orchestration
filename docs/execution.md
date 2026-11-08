@@ -1,6 +1,8 @@
 # Execution adapter contract
 
-Status: proposed interface semantics; no execution adapter is implemented here.
+Implementation status: a limited local backend now exists; see [backend implementation](backend.md) for the exact supported subset. The broader contracts below remain proposed.
+
+Status: proposed interface semantics; only the local subset documented in the backend implementation is available.
 
 ## Capability discovery
 

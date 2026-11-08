@@ -1,6 +1,8 @@
 # Proposed capability catalog
 
-This catalog describes intended coverage for a neutral public design. Every row is **proposed**, not implemented or verified in this repository. An adapter advertises only the subset it actually supports and tests.
+Implementation status: a limited local backend now exists; see [backend implementation](backend.md) for the exact supported subset. The broader contracts below remain proposed.
+
+This catalog describes intended coverage for a neutral public design. Every broad capability family is **proposed**; a small local subset is implemented and tested as documented separately. An adapter advertises only the subset it actually supports and tests.
 
 | Capability family | Proposed operations | Required distinction |
 | --- | --- | --- |

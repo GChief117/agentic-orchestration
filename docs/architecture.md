@@ -1,6 +1,8 @@
 # Three-part architecture
 
-Status: public-facing design proposal. The repository implements a static plan validator, not the execution or connection layers described here. The design is independent of any existing private installation, organization, or agent provider.
+Implementation status: a limited local backend now exists; see [backend implementation](backend.md) for the exact supported subset. The broader contracts below remain proposed.
+
+Status: public-facing design proposal. The repository implements a static plan validator and a limited local backend, not the full execution and connection layers described here. The design is independent of any existing private installation, organization, or agent provider.
 
 ## 1. Orchestration
 
