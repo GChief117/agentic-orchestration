@@ -1,3 +1,4 @@
+import { openProviderForm } from "./provider-form.js";
 import { openTeamForm } from "./team-form.js";
 import { projectView } from "./domain.js";
 import { openGoalForm, openProjectForm, openTaskDetails } from "./forms.js";
@@ -211,6 +212,8 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
       } else if (button.dataset.action === "new-project") createProject();
       else if (button.dataset.action === "new-goal") createGoal();
       else if (button.dataset.action === "edit-team") editTeam();
+      else if (button.dataset.action === "providers")
+        dialog = openProviderForm(document, api);
       else if (button.dataset.action === "refresh") await refresh();
     } catch (error) {
       showError(error);

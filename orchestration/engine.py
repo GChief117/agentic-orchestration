@@ -9,6 +9,7 @@ from .plans import parse_tasks
 from .scheduling import CapacityLimits, goal_state, select_work
 from .projects import parse_project, positive_integer
 from .storage import Store
+from .providers import ProviderConnections
 
 
 class Engine:
@@ -36,6 +37,7 @@ class Engine:
         self.connection = LocalConnection(Path(directory) / "artifacts")
         self.executor = executor or LocalExecutor(self.connection)
         self.store = Store(directory)
+        self.providers = ProviderConnections(directory)
         self.lock = threading.RLock()
         self.stopping = threading.Event()
         self.active = {}

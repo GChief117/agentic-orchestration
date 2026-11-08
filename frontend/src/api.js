@@ -68,6 +68,14 @@ export class ApiClient {
     return result;
   }
 
+  /** List official provider tools and their reported authentication state. */
+  providers() {
+    return this.send("/api/providers");
+  }
+  /** Launch a selected provider’s own interactive sign-in on this computer. */
+  signInProvider(provider) {
+    return this.send("/api/providers/sign-in", { provider });
+  }
   /**
    * Fetch current projects, agents, tasks, receipts, and capacity.
    * @returns {Promise<object>} Backend workspace snapshot.

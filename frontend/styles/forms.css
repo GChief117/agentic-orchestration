@@ -224,3 +224,32 @@ legend {
 .evidence-dialog h3 {
   margin: 20px 0 12px;
 }
+
+/* Provider accounts: explicit sign-in actions with separate availability states. */
+.provider-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem 1rem;
+  padding: 1.25rem 0;
+  border-bottom: 1px solid var(--line);
+  align-items: center;
+}
+.provider-card h3,
+.provider-card p {
+  margin: 0;
+}
+.provider-card .provider-help {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+.provider-card code {
+  user-select: all;
+}
+@media (max-width: 600px) {
+  .provider-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .provider-card .button {
+    justify-self: start;
+  }
+}

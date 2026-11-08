@@ -55,6 +55,7 @@ STATIC_ASSETS = {
             "speech",
             "organization-editor",
             "team-form",
+            "provider-form",
         )
     },
 }
@@ -155,6 +156,8 @@ def make_handler(engine, token):
                     HTTPStatus.OK,
                     {"projects": state["projects"], "agents": state["agents"]},
                 )
+            elif route == "/api/providers":
+                self.send(HTTPStatus.OK, {"providers": engine.providers.list()})
             elif route == "/api/state":
                 self.send(HTTPStatus.OK, engine.snapshot())
             elif route.startswith("/api/artifact/"):
@@ -209,7 +212,11 @@ def make_handler(engine, token):
             try:
                 data = self.read_body()
                 route = urlparse(self.path).path
-                if route == "/api/projects":
+                if route == "/api/providers/sign-in":
+                    self.send(
+                        HTTPStatus.OK, engine.providers.sign_in(data.get("provider"))
+                    )
+                elif route == "/api/projects":
                     project_id = engine.create_project(data)
                     self.send(HTTPStatus.CREATED, {"id": project_id})
                 elif route.startswith("/api/projects/") and route.endswith("/team"):

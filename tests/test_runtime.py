@@ -4,6 +4,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 from http.server import ThreadingHTTPServer
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -408,6 +409,28 @@ class HTTPTests(unittest.TestCase):
                 self.request("/api/state", headers=headers)
             self.assertEqual(error.exception.code, 403)
             error.exception.close()
+
+    def test_provider_routes_require_session_and_launch_only_on_post(self):
+        with patch.object(self.engine.providers, "list", return_value=[]) as listing:
+            with self.request("/api/providers") as response:
+                self.assertEqual(json.load(response), {"providers": []})
+            listing.assert_called_once()
+        with patch.object(
+            self.engine.providers, "sign_in", return_value={"state": "launched"}
+        ) as launch:
+            for headers in ({"Authorization": ""}, {"Origin": "https://example.com"}):
+                with self.assertRaises(HTTPError) as error:
+                    self.request(
+                        "/api/providers/sign-in", {"provider": "openai"}, headers
+                    )
+                self.assertEqual(error.exception.code, 403)
+                error.exception.close()
+            launch.assert_not_called()
+            with self.request(
+                "/api/providers/sign-in", {"provider": "openai"}
+            ) as response:
+                self.assertEqual(json.load(response)["state"], "launched")
+            launch.assert_called_once_with("openai")
 
     def test_invalid_request_rejected(self):
         with self.assertRaises(HTTPError) as error:

@@ -17,7 +17,7 @@ python3 -m orchestration examples/backend_goal.json --project examples/greenfiel
 python3 app.py --port 8765 --execution-limit 4
 ```
 
-The first command runs an explicit task graph and prints its result. The second starts the JavaScript project workspace and its authenticated JSON API at `http://127.0.0.1:8765`. The backend initializes projects with charters and assigned agent teams, and persists goals, tasks, attempts, and receipts, enforces dependencies and resource conflicts, and executes bounded local operations. Remote bridges and AI-provider sessions are not connected yet. See the [backend implementation](docs/backend.md) for the module map, request flow, API, and limitations.
+The first command runs an explicit task graph and prints its result. The second starts the JavaScript project workspace and its authenticated JSON API at `http://127.0.0.1:8765`. The backend initializes projects with charters and assigned agent teams, and persists goals, tasks, attempts, and receipts, enforces dependencies and resource conflicts, and executes bounded local operations. Remote bridges and model execution adapters are not connected yet. The Model connections dialog can launch sign-in through installed official provider tools; those accounts are not yet used to execute tasks. See the [backend implementation](docs/backend.md) for the module map, request flow, API, and limitations.
 
 ## JavaScript frontend
 
@@ -29,6 +29,16 @@ For development checks:
 npm ci --prefix frontend
 npm test --prefix frontend
 ```
+
+## Provider sign-in
+
+Open **Model connections** in the workspace header. On macOS, the sign-in buttons open installed Codex CLI, Claude Code, or Gemini CLI in Terminal, where you finish the provider’s own browser flow. The app does not receive, copy, or store OAuth tokens. Install missing tools using the setup guides linked in the dialog. Other operating systems show the manual sign-in commands.
+
+Refresh status after signing in. OpenAI and Claude status comes from their CLI status commands. Gemini remains **unverified** because this integration has no reliable status command for it. A successful launch is not proof of authentication, and authenticated tools are not yet wired into the task executor. Existing API-key authentication in a tool may also appear as signed in; this is not an account identity check.
+
+The routes `GET /api/providers` and `POST /api/providers/sign-in` require the same local session and origin protections as the rest of the API. Sign-in launches only after an explicit request. Generated launcher scripts contain only fixed commands and live in the ignored runtime directory.
+
+Official references: [Codex authentication](https://developers.openai.com/codex/auth), [Claude Code authentication](https://code.claude.com/docs/en/authentication), [Gemini CLI authentication](https://geminicli.com/docs/get-started/authentication/).
 
 ## Three parts, one repository
 
