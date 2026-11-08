@@ -57,8 +57,8 @@ def parse_project(document, connection):
     if not isinstance(document, dict):
         raise ValueError("Project must be an object")
     name = text(document.get("name"), "Project name", 120)
-    if document.get("mode") != "greenfield":
-        raise ValueError("Only explicit greenfield project initialization is supported")
+    if document.get("mode") not in ("greenfield", "existing"):
+        raise ValueError("Choose greenfield or existing project initialization")
     raw_charter = document.get("charter")
     if not isinstance(raw_charter, dict):
         raise ValueError("A project charter is required")
@@ -127,4 +127,4 @@ def parse_project(document, connection):
     )
     if concurrency > sum(agent.max_concurrency for agent in agents):
         raise ValueError("Project concurrency exceeds the team's configured capacity")
-    return ProjectDefinition(name, "greenfield", charter, agents, concurrency)
+    return ProjectDefinition(name, document["mode"], charter, agents, concurrency)

@@ -432,6 +432,27 @@ class HTTPTests(unittest.TestCase):
                 self.assertEqual(json.load(response)["state"], "launched")
             launch.assert_called_once_with("openai")
 
+    def test_discovery_routes_are_authenticated_and_import_only_selected_projects(self):
+        folder = Path(self.temp.name) / "source"
+        folder.mkdir()
+        (folder / "Cargo.toml").write_text("unchanged")
+        with self.assertRaises(HTTPError) as error:
+            self.request(
+                "/api/projects/scan", {"root": str(folder)}, {"Authorization": ""}
+            )
+        self.assertEqual(error.exception.code, 403)
+        error.exception.close()
+        with self.request("/api/projects/scan", {"root": str(folder)}) as response:
+            scan = json.load(response)
+        with self.request(
+            "/api/projects/import",
+            {"scan_id": scan["scan_id"], "candidate_ids": [scan["projects"][0]["id"]]},
+        ) as response:
+            result = json.load(response)
+            self.assertEqual(response.status, 201)
+        self.assertEqual(len(result["projects"]), 1)
+        self.assertEqual((folder / "Cargo.toml").read_text(), "unchanged")
+
     def test_invalid_request_rejected(self):
         with self.assertRaises(HTTPError) as error:
             self.request("/api/goals", [])

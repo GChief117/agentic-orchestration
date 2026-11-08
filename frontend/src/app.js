@@ -1,3 +1,4 @@
+import { openImportForm } from "./import-form.js";
 import { openProviderForm } from "./provider-form.js";
 import { openTeamForm } from "./team-form.js";
 import { projectView } from "./domain.js";
@@ -212,6 +213,13 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
       } else if (button.dataset.action === "new-project") createProject();
       else if (button.dataset.action === "new-goal") createGoal();
       else if (button.dataset.action === "edit-team") editTeam();
+      else if (button.dataset.action === "import-projects")
+        dialog = openImportForm(document, api, async (projects) => {
+          selectedProject = projects[0]?.id || null;
+          tab = "overview";
+          await afterMutation();
+          notify(`${projects.length} local projects imported.`);
+        });
       else if (button.dataset.action === "providers")
         dialog = openProviderForm(document, api);
       else if (button.dataset.action === "refresh") await refresh();

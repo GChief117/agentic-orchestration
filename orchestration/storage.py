@@ -60,6 +60,8 @@ class Store:
             CREATE TABLE IF NOT EXISTS projects(
               id TEXT PRIMARY KEY, name TEXT, mode TEXT, charter TEXT,
               max_concurrency INTEGER, created REAL);
+            CREATE TABLE IF NOT EXISTS project_sources(
+              project_id TEXT PRIMARY KEY, path TEXT UNIQUE NOT NULL, markers TEXT);
             CREATE TABLE IF NOT EXISTS agents(
               id TEXT PRIMARY KEY, project_id TEXT, key TEXT, name TEXT, role TEXT,
               instructions TEXT, responsibilities TEXT, capabilities TEXT,
@@ -181,7 +183,8 @@ class Store:
     def project(self, project_id):
         """Load a project and decode its charter, or raise ValueError for an unknown ID."""
         row = self.db.execute(
-            "SELECT * FROM projects WHERE id=?", (project_id,)
+            "SELECT p.*, s.path AS source_path, s.markers AS source_markers FROM projects p LEFT JOIN project_sources s ON s.project_id=p.id WHERE p.id=?",
+            (project_id,),
         ).fetchone()
         if row is None:
             raise ValueError("Unknown project")
@@ -253,6 +256,7 @@ class Store:
             "resources",
             "receipt",
             "charter",
+            "source_markers",
             "responsibilities",
             "capabilities",
         ):
@@ -275,7 +279,9 @@ class Store:
         return {
             "projects": [
                 self.decode(row)
-                for row in self.db.execute("SELECT * FROM projects ORDER BY created")
+                for row in self.db.execute(
+                    "SELECT p.*, s.path AS source_path, s.markers AS source_markers FROM projects p LEFT JOIN project_sources s ON s.project_id=p.id ORDER BY p.created"
+                )
             ],
             "agents": self.agents(),
             "tasks": self.tasks(),

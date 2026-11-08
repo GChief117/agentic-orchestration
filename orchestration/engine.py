@@ -1,5 +1,6 @@
 """Coordinate durable state, scheduling policy, and execution adapters."""
 
+import json
 from pathlib import Path
 import threading
 
@@ -10,6 +11,7 @@ from .scheduling import CapacityLimits, goal_state, select_work
 from .projects import parse_project, positive_integer
 from .storage import Store
 from .providers import ProviderConnections
+from .discovery import ProjectDiscovery, imported_definition
 
 
 class Engine:
@@ -38,6 +40,7 @@ class Engine:
         self.executor = executor or LocalExecutor(self.connection)
         self.store = Store(directory)
         self.providers = ProviderConnections(directory)
+        self.discovery = ProjectDiscovery()
         self.lock = threading.RLock()
         self.stopping = threading.Event()
         self.active = {}
@@ -61,6 +64,56 @@ class Engine:
             with self.store.db:
                 project_id = self.store.create_project(definition)
         return project_id
+
+    def scan_projects(self, root, include_root=False):
+        """Discover folders read-only and mark paths already registered in this workspace."""
+        result = self.discovery.scan(root, include_root)
+        with self.lock:
+            imported = {
+                row[0]
+                for row in self.store.db.execute("SELECT path FROM project_sources")
+            }
+        return {
+            **result,
+            "projects": [
+                {**item, "imported": item["path"] in imported}
+                for item in result["projects"]
+            ],
+        }
+
+    def import_projects(self, scan_id, identifiers):
+        """Atomically register selected scan results; never copy or execute source files."""
+        candidates = self.discovery.selected(scan_id, identifiers)
+        definitions = [
+            parse_project(imported_definition(item), self.connection)
+            for item in candidates
+        ]
+        with self.lock:
+            self._require_open()
+            existing = {
+                row[0]: row[1]
+                for row in self.store.db.execute(
+                    "SELECT path, project_id FROM project_sources"
+                )
+            }
+            imported = []
+            with self.store.db:
+                for item, definition in zip(candidates, definitions):
+                    project_id = existing.get(item["path"])
+                    if project_id is None:
+                        project_id = self.store.create_project(definition)
+                        self.store.db.execute(
+                            "INSERT INTO project_sources VALUES(?,?,?)",
+                            (project_id, item["path"], json.dumps(item["kinds"])),
+                        )
+                    imported.append(
+                        {
+                            "id": project_id,
+                            "name": definition.name,
+                            "path": item["path"],
+                        }
+                    )
+        return imported
 
     def update_team(self, project_id, document):
         """Persist chart edits for an idle project while preserving historical ownership.

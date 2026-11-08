@@ -68,6 +68,21 @@ export class ApiClient {
     return result;
   }
 
+  /** Suggest conventional local search folders without scanning them. */
+  scanRoots() {
+    return this.send("/api/projects/scan-roots");
+  }
+  /** Find project markers under a user-selected folder without executing its files. */
+  scanProjects(root, includeRoot = false) {
+    return this.send("/api/projects/scan", { root, include_root: includeRoot });
+  }
+  /** Register only the checked candidates from a server-issued discovery snapshot. */
+  importProjects(scanId, candidateIds) {
+    return this.send("/api/projects/import", {
+      scan_id: scanId,
+      candidate_ids: candidateIds,
+    });
+  }
   /** List official provider tools and their reported authentication state. */
   providers() {
     return this.send("/api/providers");

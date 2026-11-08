@@ -253,3 +253,35 @@ legend {
     justify-self: start;
   }
 }
+
+/* Local project discovery keeps long paths readable and selections bounded. */
+.scan-results {
+  max-height: 340px;
+  overflow-y: auto;
+  margin: 1rem 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.scan-project {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.scan-project[hidden] {
+  display: none;
+}
+.scan-project input {
+  width: auto;
+  margin-top: 4px;
+}
+.scan-project span {
+  min-width: 0;
+}
+.scan-project small {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}

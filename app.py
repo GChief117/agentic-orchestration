@@ -56,6 +56,7 @@ STATIC_ASSETS = {
             "organization-editor",
             "team-form",
             "provider-form",
+            "import-form",
         )
     },
 }
@@ -156,6 +157,8 @@ def make_handler(engine, token):
                     HTTPStatus.OK,
                     {"projects": state["projects"], "agents": state["agents"]},
                 )
+            elif route == "/api/projects/scan-roots":
+                self.send(HTTPStatus.OK, {"roots": engine.discovery.roots()})
             elif route == "/api/providers":
                 self.send(HTTPStatus.OK, {"providers": engine.providers.list()})
             elif route == "/api/state":
@@ -212,7 +215,23 @@ def make_handler(engine, token):
             try:
                 data = self.read_body()
                 route = urlparse(self.path).path
-                if route == "/api/providers/sign-in":
+                if route == "/api/projects/scan":
+                    self.send(
+                        HTTPStatus.OK,
+                        engine.scan_projects(
+                            data.get("root"), data.get("include_root", False)
+                        ),
+                    )
+                elif route == "/api/projects/import":
+                    self.send(
+                        HTTPStatus.CREATED,
+                        {
+                            "projects": engine.import_projects(
+                                data.get("scan_id"), data.get("candidate_ids")
+                            )
+                        },
+                    )
+                elif route == "/api/providers/sign-in":
                     self.send(
                         HTTPStatus.OK, engine.providers.sign_in(data.get("provider"))
                     )
