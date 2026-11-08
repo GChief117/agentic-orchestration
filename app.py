@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from orchestration.engine import Engine
 
 ROOT = Path(__file__).resolve().parent
-MAX_REQUEST_BYTES = 8192
+MAX_REQUEST_BYTES = 262144
 MAX_ARTIFACT_BYTES = 65536
 
 
@@ -77,6 +77,12 @@ def make_handler(engine, token):
                     HTTPStatus.FORBIDDEN,
                     {"error": "Local session authorization required"},
                 )
+            elif route == "/api/projects":
+                state = engine.snapshot()
+                self.send(
+                    HTTPStatus.OK,
+                    {"projects": state["projects"], "agents": state["agents"]},
+                )
             elif route == "/api/state":
                 self.send(HTTPStatus.OK, engine.snapshot())
             elif route.startswith("/api/artifact/"):
@@ -122,8 +128,13 @@ def make_handler(engine, token):
             try:
                 data = self.read_body()
                 route = urlparse(self.path).path
-                if route == "/api/goals":
-                    goal_id = engine.submit(data.get("title"), data.get("tasks"))
+                if route == "/api/projects":
+                    project_id = engine.create_project(data)
+                    self.send(HTTPStatus.CREATED, {"id": project_id})
+                elif route == "/api/goals":
+                    goal_id = engine.submit(
+                        data.get("project_id"), data.get("title"), data.get("tasks")
+                    )
                     self.send(HTTPStatus.CREATED, {"id": goal_id})
                 elif route == "/api/cancel":
                     goal_id = data.get("id")
@@ -143,8 +154,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--data-dir", type=Path, default=ROOT / ".runtime")
+    parser.add_argument("--execution-limit", type=int, required=True)
     args = parser.parse_args()
-    engine = Engine(args.data_dir)
+    engine = Engine(args.data_dir, execution_limit=args.execution_limit)
     token = secrets.token_urlsafe(32)
     token_path = args.data_dir / "api-token"
     try:

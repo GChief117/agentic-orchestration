@@ -34,3 +34,15 @@ class LocalConnection:
         if not candidate.is_relative_to(self.workspace) or candidate == self.workspace:
             raise PermissionError("Artifact path escapes the workspace")
         return candidate
+
+    def project_path(self, project_id, name):
+        """Constrain paths within a project, not merely within the service workspace."""
+        if not isinstance(project_id, str) or not project_id.isalnum():
+            raise PermissionError("Invalid project identity")
+        if not isinstance(name, str) or not name or Path(name).is_absolute():
+            raise PermissionError("A project-relative artifact path is required")
+        root = self.path("projects/" + project_id)
+        candidate = (root / name).resolve()
+        if not candidate.is_relative_to(root) or candidate == root:
+            raise PermissionError("Artifact path escapes this project")
+        return candidate

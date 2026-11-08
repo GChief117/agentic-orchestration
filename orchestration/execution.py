@@ -87,6 +87,9 @@ class LocalExecutor:
         result.update(
             operation_id=task.get("attempt_id", task["id"]),
             target=task["target"],
+            project_id=task["project_id"],
+            agent_id=task["agent_id"],
+            goal_id=task["goal_id"],
             capability=capability,
             duration_ms=round((time.time() - started) * 1000),
         )

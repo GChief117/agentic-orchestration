@@ -4,20 +4,32 @@
     {
       "id": "runtime",
       "title": "Inspect the Python runtime",
-      "capability": "terminal.python_version"
+      "capability": "terminal.python_version",
+      "agent": "coordinator"
     },
     {
       "id": "write",
       "title": "Write the release artifact",
       "capability": "files.write",
-      "parameters": {"path": "release/checklist.txt", "content": "Runtime checked. Artifact verified.\n"}
+      "parameters": {
+        "path": "release/checklist.txt",
+        "content": "Runtime checked. Artifact verified.\n"
+      },
+      "agent": "builder"
     },
     {
       "id": "verify",
       "title": "Verify the release artifact",
       "capability": "files.inspect",
-      "parameters": {"path": "release/checklist.txt", "expected": "Runtime checked. Artifact verified.\n"},
-      "depends_on": ["runtime", "write"]
+      "parameters": {
+        "path": "release/checklist.txt",
+        "expected": "Runtime checked. Artifact verified.\n"
+      },
+      "depends_on": [
+        "runtime",
+        "write"
+      ],
+      "agent": "reviewer"
     }
   ]
 }

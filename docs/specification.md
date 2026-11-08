@@ -10,6 +10,7 @@ This is the orchestration part of the [three-part architecture](architecture.md)
 
 | Entity | Meaning |
 | --- | --- |
+| Project | Persistent charter, assigned agent roster, organizational roles, and concurrency policy. |
 | Goal | Desired outcome, acceptance criteria, constraints, priority, budget, and revision. |
 | Task | Durable work item belonging to a goal, with dependencies, owner, output contract, and acceptance criteria. |
 | Attempt | One bounded execution of a task by a worker, with an identity, input revision, and outcome. |

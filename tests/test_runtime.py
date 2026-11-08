@@ -11,9 +11,14 @@ from urllib.request import Request, urlopen
 from app import make_handler
 from orchestration.engine import Engine
 from orchestration.execution import ExecutionCancelled
-from orchestration.scheduling import conflicts, goal_state, select_work
+from orchestration.scheduling import CapacityLimits, conflicts, goal_state, select_work
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples/backend_goal.json"
+PROJECT = EXAMPLE.with_name("greenfield_project.json")
+
+
+def project_example():
+    return json.loads(PROJECT.read_text())
 
 
 def example():
@@ -42,15 +47,27 @@ class GateExecutor:
 class RuntimeTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.engine = Engine(self.temp.name)
+        self.engine = Engine(self.temp.name, execution_limit=2)
+        self.project_id = self.engine.create_project(project_example())
 
     def tearDown(self):
         self.engine.close()
         self.temp.cleanup()
 
+    def submit(self, title, tasks):
+        # Test helpers name owners explicitly without adding defaults to production.
+        owners = {
+            "files.write": "builder",
+            "files.inspect": "reviewer",
+            "terminal.python_version": "coordinator",
+        }
+        for task in tasks:
+            task.setdefault("agent", owners.get(task.get("capability"), "coordinator"))
+        return self.engine.submit(self.project_id, title, tasks)
+
     def submit_example(self, title="Release"):
         plan = example()
-        return self.engine.submit(title, plan["tasks"])
+        return self.submit(title, plan["tasks"])
 
     def wait_finished(self, count):
         end = time.monotonic() + 5
@@ -126,7 +143,7 @@ class RuntimeTests(unittest.TestCase):
                 "depends_on": ["verify"],
             }
         )
-        self.engine.submit("Mismatch", plan["tasks"])
+        self.submit("Mismatch", plan["tasks"])
         self.engine.start()
         state = self.wait_finished(4)
         self.assertEqual(
@@ -141,7 +158,7 @@ class RuntimeTests(unittest.TestCase):
             self.engine.store.start(task)
             self.engine.store.commit()
         self.engine.close()
-        self.engine = Engine(self.temp.name)
+        self.engine = Engine(self.temp.name, execution_limit=2)
         self.engine.start()
         state = self.wait_finished(3)
         self.assertEqual(state["tasks"][0]["state"], "failed")
@@ -151,12 +168,12 @@ class RuntimeTests(unittest.TestCase):
 
     def test_second_engine_cannot_steal_active_store(self):
         with self.assertRaisesRegex(RuntimeError, "Another engine"):
-            Engine(self.temp.name)
+            Engine(self.temp.name, execution_limit=2)
 
     def test_write_aliases_share_exclusive_resource(self):
         gate = GateExecutor()
         self.engine.executor = gate
-        self.engine.submit(
+        self.submit(
             "Writes",
             [
                 {
@@ -182,12 +199,12 @@ class RuntimeTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             self.engine.connection.authorize("remote", "files.write")
         with self.assertRaises(PermissionError):
-            self.engine.submit("Unsupported", [{"id": "x", "capability": "unknown"}])
+            self.submit("Unsupported", [{"id": "x", "capability": "unknown"}])
         self.assertEqual(self.engine.snapshot()["tasks"], [])
 
     def test_requested_remote_target_is_not_silently_replaced(self):
         with self.assertRaises(PermissionError):
-            self.engine.submit(
+            self.submit(
                 "Remote",
                 [
                     {
@@ -222,7 +239,7 @@ class RuntimeTests(unittest.TestCase):
             with self.subTest(tasks=tasks), self.assertRaises(
                 (ValueError, PermissionError)
             ):
-                self.engine.submit("Invalid", tasks)
+                self.submit("Invalid", tasks)
         self.assertEqual(self.engine.snapshot()["goals"], [])
 
     def test_symlink_escape_is_rejected(self):
@@ -238,18 +255,30 @@ class SchedulingTests(unittest.TestCase):
     def task(key, goal="one", resources=None, state="queued", dependencies=None):
         return {
             "id": key,
+            "project_id": "project",
+            "agent_id": "agent-" + key,
+            "target": "local-workspace",
             "goal_id": goal,
             "resources": resources or [],
             "state": state,
             "dependencies": dependencies or [],
         }
 
+    def schedule(self, tasks, active, limit):
+        limits = CapacityLimits(
+            limit,
+            {"project": limit},
+            {task["agent_id"]: limit for task in tasks},
+            {"local-workspace": limit},
+        )
+        return select_work(tasks, active, limits)
+
     def test_capacity_and_goal_fairness(self):
         tasks = [self.task("a"), self.task("b"), self.task("c", "two")]
         self.assertEqual(
-            [task["id"] for task in select_work(tasks, set(), 2).dispatch], ["a", "c"]
+            [task["id"] for task in self.schedule(tasks, set(), 2).dispatch], ["a", "c"]
         )
-        self.assertEqual(len(select_work(tasks, set(), 1).dispatch), 1)
+        self.assertEqual(len(self.schedule(tasks, set(), 1).dispatch), 1)
 
     def test_shared_reads_and_exclusive_writes(self):
         self.assertFalse(conflicts([("shared", "read")], [("shared", "read")]))
@@ -259,15 +288,15 @@ class SchedulingTests(unittest.TestCase):
             self.task("b", resources=[("shared", "read")]),
         ]
         self.assertEqual(
-            [task["id"] for task in select_work(tasks, set(), 2).dispatch], ["a"]
+            [task["id"] for task in self.schedule(tasks, set(), 2).dispatch], ["a"]
         )
 
     def test_dependencies_wait_for_acceptance(self):
         tasks = [self.task("a", state="running"), self.task("b", dependencies=["a"])]
-        self.assertEqual(select_work(tasks, {"a"}, 2).dispatch, [])
+        self.assertEqual(self.schedule(tasks, {"a"}, 2).dispatch, [])
         tasks[0]["state"] = "accepted"
         self.assertEqual(
-            [task["id"] for task in select_work(tasks, set(), 2).dispatch], ["b"]
+            [task["id"] for task in self.schedule(tasks, set(), 2).dispatch], ["b"]
         )
 
     def test_cancelling_goal_is_visible(self):
@@ -277,7 +306,8 @@ class SchedulingTests(unittest.TestCase):
 class HTTPTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.engine = Engine(self.temp.name)
+        self.engine = Engine(self.temp.name, execution_limit=2)
+        self.project_id = self.engine.create_project(project_example())
         self.server = ThreadingHTTPServer(
             ("127.0.0.1", 0), make_handler(self.engine, "test-session")
         )
@@ -308,10 +338,26 @@ class HTTPTests(unittest.TestCase):
         )
 
     def test_authenticated_task_submission(self):
-        with self.request("/api/goals", example()) as result:
+        with self.request(
+            "/api/goals", dict(example(), project_id=self.project_id)
+        ) as result:
             self.assertEqual(result.status, 201)
         with self.request("/api/state") as result:
             self.assertEqual(len(json.load(result)["tasks"]), 3)
+
+    def test_project_api_initializes_and_lists_teams(self):
+        with self.request("/api/projects", project_example()) as result:
+            self.assertEqual(result.status, 201)
+        with self.request("/api/projects") as result:
+            state = json.load(result)
+        self.assertEqual(len(state["projects"]), 2)
+        self.assertEqual(len(state["agents"]), 6)
+
+    def test_goal_requires_project_id(self):
+        with self.assertRaises(HTTPError) as error:
+            self.request("/api/goals", example())
+        self.assertEqual(error.exception.code, 400)
+        error.exception.close()
 
     def test_no_dashboard_is_served(self):
         with self.assertRaises(HTTPError) as error:

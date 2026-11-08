@@ -1,0 +1,44 @@
+{
+  "name": "Release engineering",
+  "mode": "greenfield",
+  "charter": {
+    "objective": "Prepare and verify release artifacts through an accountable agent team.",
+    "scope": ["Local artifact preparation", "Independent verification", "Runtime inspection"],
+    "constraints": ["Use only configured capabilities", "Keep artifacts inside the project workspace"],
+    "success_criteria": ["Artifacts pass explicit checks", "Every task has an assigned agent and a recorded result"]
+  },
+  "team_size": 3,
+  "max_concurrency": 2,
+  "agents": [
+    {
+      "key": "coordinator",
+      "name": "Project coordinator",
+      "role": "coordination",
+      "instructions": "Coordinate the agreed scope and inspect the runtime before verification.",
+      "responsibilities": ["Maintain task ownership", "Inspect execution prerequisites"],
+      "capabilities": ["terminal.python_version"],
+      "reports_to": null,
+      "max_concurrency": 1
+    },
+    {
+      "key": "builder",
+      "name": "Artifact builder",
+      "role": "implementation",
+      "instructions": "Produce artifacts from the task specification within the project scope.",
+      "responsibilities": ["Write requested artifacts"],
+      "capabilities": ["files.write"],
+      "reports_to": "coordinator",
+      "max_concurrency": 1
+    },
+    {
+      "key": "reviewer",
+      "name": "Independent reviewer",
+      "role": "verification",
+      "instructions": "Check artifact contents against explicit acceptance evidence.",
+      "responsibilities": ["Verify artifacts", "Report mismatches"],
+      "capabilities": ["files.inspect"],
+      "reports_to": "coordinator",
+      "max_concurrency": 1
+    }
+  ]
+}

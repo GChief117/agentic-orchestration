@@ -13,11 +13,11 @@ This repository develops a shared vocabulary, practical patterns, and testable c
 Python 3.10+ on macOS or Linux; no third-party runtime dependencies.
 
 ```sh
-python3 -m orchestration examples/backend_goal.json --data-dir .runtime/example
-python3 app.py --port 8765
+python3 -m orchestration examples/backend_goal.json --project examples/greenfield_project.json --execution-limit 4 --data-dir .runtime/example
+python3 app.py --port 8765 --execution-limit 4
 ```
 
-The first command runs an explicit task graph and prints its result. The second starts an authenticated JSON API. There is no frontend. The backend persists goals, tasks, attempts, and receipts, enforces dependencies and resource conflicts, and executes bounded local operations. Remote bridges and AI-provider sessions are not connected yet. See the [backend implementation](docs/backend.md) for the module map, request flow, API, and limitations.
+The first command runs an explicit task graph and prints its result. The second starts an authenticated JSON API. There is no frontend. The backend initializes projects with charters and assigned agent teams, and persists goals, tasks, attempts, and receipts, enforces dependencies and resource conflicts, and executes bounded local operations. Remote bridges and AI-provider sessions are not connected yet. See the [backend implementation](docs/backend.md) for the module map, request flow, API, and limitations.
 
 ## Three parts, one repository
 
@@ -48,6 +48,8 @@ This is a public-facing design prepared in a private repository. Repository visi
 ```text
 Human goals and corrections
             |
+   Project charter + assigned agent team
+            |
    Portfolio scheduler ---- budgets, priority, fairness
             |
        Task graph --------- dependencies, owners, acceptance criteria
@@ -56,6 +58,8 @@ Human goals and corrections
             |
     Evidence + artifacts -- verification, integration, recovery
 ```
+
+Each greenfield project begins with a charter and an explicit agent roster. Team size stays separate from execution concurrency; every task names an assigned project agent.
 
 One goal may create many tasks. Tasks from different goals may compete for the same agent, budget, file, browser session, or external service. Those conflicts need explicit coordination.
 

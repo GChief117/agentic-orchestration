@@ -12,7 +12,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("plan", type=Path)
     parser.add_argument("--data-dir", type=Path, default=Path(".runtime"))
-    parser.add_argument("--workers", type=int, default=2)
+    parser.add_argument("--execution-limit", type=int, required=True)
+    project = parser.add_mutually_exclusive_group(required=True)
+    project.add_argument(
+        "--project", type=Path, help="Create a greenfield project from this definition"
+    )
+    project.add_argument(
+        "--project-id", help="Use an existing project and its assigned team"
+    )
     parser.add_argument("--timeout", type=float, default=30)
     args = parser.parse_args()
     if args.timeout <= 0:
@@ -21,11 +28,14 @@ def main():
         plan = json.loads(args.plan.read_text())
         if not isinstance(plan, dict):
             raise ValueError("Plan must be an object")
-        engine = Engine(args.data_dir, workers=args.workers)
+        engine = Engine(args.data_dir, execution_limit=args.execution_limit)
     except (OSError, ValueError, RuntimeError) as exc:
         parser.exit(2, f"{exc}\n")
     try:
-        goal_id = engine.submit(plan.get("title"), plan.get("tasks"))
+        project_id = args.project_id
+        if args.project:
+            project_id = engine.create_project(json.loads(args.project.read_text()))
+        goal_id = engine.submit(project_id, plan.get("title"), plan.get("tasks"))
         engine.start()
         deadline = time.monotonic() + args.timeout
         while time.monotonic() < deadline:
@@ -37,7 +47,7 @@ def main():
             time.sleep(0.02)
         engine.cancel_goal(goal_id)
         parser.exit(1, "Deadline exceeded; cancellation requested\n")
-    except (ValueError, PermissionError) as exc:
+    except (ValueError, PermissionError, OSError) as exc:
         parser.exit(2, f"{exc}\n")
     finally:
         engine.close()

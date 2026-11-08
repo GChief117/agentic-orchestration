@@ -32,6 +32,7 @@ class Store:
               state TEXT, started REAL, finished REAL, receipt TEXT, error TEXT);
         """
         )
+        self._migrate_projects()
         # An interrupted operation may have committed effects. Never replay it silently.
         for row in self.db.execute(
             "SELECT id FROM tasks WHERE state IN ('running','cancelling')"
@@ -44,23 +45,107 @@ class Store:
             )
         self.db.commit()
 
+    def _migrate_projects(self):
+        self.db.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS projects(
+              id TEXT PRIMARY KEY, name TEXT, mode TEXT, charter TEXT,
+              max_concurrency INTEGER, created REAL);
+            CREATE TABLE IF NOT EXISTS agents(
+              id TEXT PRIMARY KEY, project_id TEXT, key TEXT, name TEXT, role TEXT,
+              instructions TEXT, responsibilities TEXT, capabilities TEXT,
+              reports_to TEXT, max_concurrency INTEGER, UNIQUE(project_id,key));
+        """
+        )
+        for table, additions in {
+            "goals": ("project_id",),
+            "tasks": ("project_id", "agent_id"),
+            "attempts": ("project_id", "agent_id"),
+        }.items():
+            columns = {
+                row["name"] for row in self.db.execute(f"PRAGMA table_info({table})")
+            }
+            for column in additions:
+                if column not in columns:
+                    self.db.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
+        # Old records remain inspectable, but cannot run without a project or owner.
+        self.db.execute(
+            """UPDATE tasks SET state='blocked',
+            error='Legacy task has no project; resubmit with an explicit project and agent'
+            WHERE project_id IS NULL AND state='queued'"""
+        )
+
+    def create_project(self, definition):
+        project_id = uuid.uuid4().hex
+        agent_ids = {agent.key: uuid.uuid4().hex for agent in definition.agents}
+        self.db.execute(
+            "INSERT INTO projects VALUES(?,?,?,?,?,?)",
+            (
+                project_id,
+                definition.name,
+                definition.mode,
+                json.dumps(definition.charter),
+                definition.max_concurrency,
+                time.time(),
+            ),
+        )
+        for agent in definition.agents:
+            self.db.execute(
+                "INSERT INTO agents VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (
+                    agent_ids[agent.key],
+                    project_id,
+                    agent.key,
+                    agent.name,
+                    agent.role,
+                    agent.instructions,
+                    json.dumps(agent.responsibilities),
+                    json.dumps(agent.capabilities),
+                    agent_ids.get(agent.reports_to),
+                    agent.max_concurrency,
+                ),
+            )
+        self.event(
+            None,
+            f"Project created: {definition.name} · {len(definition.agents)} assigned agents",
+        )
+        return project_id
+
+    def project(self, project_id):
+        row = self.db.execute(
+            "SELECT * FROM projects WHERE id=?", (project_id,)
+        ).fetchone()
+        if row is None:
+            raise ValueError("Unknown project")
+        return self.decode(row)
+
+    def agents(self, project_id=None):
+        if project_id is None:
+            rows = self.db.execute("SELECT * FROM agents ORDER BY rowid")
+        else:
+            rows = self.db.execute(
+                "SELECT * FROM agents WHERE project_id=? ORDER BY rowid", (project_id,)
+            )
+        return [self.decode(row) for row in rows]
+
     def event(self, task_id, message):
         self.db.execute(
             "INSERT INTO events(at,task_id,message) VALUES(?,?,?)",
             (time.time(), task_id, message),
         )
 
-    def create_goal(self, title, definitions, target):
+    def create_goal(self, project_id, title, definitions, target):
         goal_id = uuid.uuid4().hex
         identifiers = [uuid.uuid4().hex for _ in definitions]
         self.db.execute(
-            "INSERT INTO goals VALUES(?,?,?)", (goal_id, title, time.time())
+            "INSERT INTO goals(id,title,created,project_id) VALUES(?,?,?,?)",
+            (goal_id, title, time.time(), project_id),
         )
         for index, definition in enumerate(definitions):
             self.db.execute(
                 """INSERT INTO tasks
-              (id,goal_id,title,capability,target,parameters,dependencies,resources,state)
-              VALUES(?,?,?,?,?,?,?,?,?)""",
+              (id,goal_id,title,capability,target,parameters,dependencies,resources,state,project_id,agent_id)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     identifiers[index],
                     goal_id,
@@ -76,6 +161,8 @@ class Store:
                     ),
                     json.dumps(definition.resources),
                     "queued",
+                    project_id,
+                    definition.agent_id,
                 ),
             )
         self.event(None, f"Goal created: {title} · {len(definitions)} tasks")
@@ -84,7 +171,15 @@ class Store:
     @staticmethod
     def decode(row):
         value = dict(row)
-        for key in ("parameters", "dependencies", "resources", "receipt"):
+        for key in (
+            "parameters",
+            "dependencies",
+            "resources",
+            "receipt",
+            "charter",
+            "responsibilities",
+            "capabilities",
+        ):
             if key in value:
                 value[key] = json.loads(value[key]) if value[key] else None
         return value
@@ -95,9 +190,20 @@ class Store:
             for row in self.db.execute("SELECT * FROM tasks ORDER BY rowid")
         ]
 
+    def scheduling_state(self):
+        """Read only records needed for dispatch, excluding historical receipts/events."""
+        return {
+            "projects": [
+                self.decode(row)
+                for row in self.db.execute("SELECT * FROM projects ORDER BY created")
+            ],
+            "agents": self.agents(),
+            "tasks": self.tasks(),
+        }
+
     def snapshot(self):
         return {
-            "tasks": self.tasks(),
+            **self.scheduling_state(),
             "goals": [
                 dict(row)
                 for row in self.db.execute("SELECT * FROM goals ORDER BY created DESC")
@@ -121,8 +227,15 @@ class Store:
             "UPDATE tasks SET state='running',started=? WHERE id=?", (now, task["id"])
         )
         self.db.execute(
-            "INSERT INTO attempts(id,task_id,state,started) VALUES(?,?,?,?)",
-            (attempt_id, task["id"], "running", now),
+            "INSERT INTO attempts(id,task_id,state,started,project_id,agent_id) VALUES(?,?,?,?,?,?)",
+            (
+                attempt_id,
+                task["id"],
+                "running",
+                now,
+                task["project_id"],
+                task["agent_id"],
+            ),
         )
         self.event(task["id"], "Started: " + task["title"])
         return attempt_id

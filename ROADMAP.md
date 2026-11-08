@@ -22,6 +22,14 @@
 - [x] Canonical resource coordination and local file/terminal operations.
 - [x] Coordination and API integration tests.
 
+## Project-first coordination
+
+- [x] Greenfield project initialization with an explicit charter and fixed roster.
+- [x] Persistent agent roles, instructions, capabilities, and reporting relationships.
+- [x] Explicit task ownership within projects and separate project artifact namespaces.
+- [x] Separate team size from overall, project, agent, and target concurrency limits.
+- [x] Reject unsupported assignments and retain legacy records without inventing teams.
+
 ## Next — validate the design
 
 - [ ] Gather real coordination failures and competing approaches through RFCs.
