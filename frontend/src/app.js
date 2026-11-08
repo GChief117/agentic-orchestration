@@ -2,6 +2,12 @@ import { projectView } from "./domain.js";
 import { openGoalForm, openProjectForm, openTaskDetails } from "./forms.js";
 import { renderWorkspace } from "./views.js";
 
+/**
+ * Mount the project workspace and connect UI actions to the supplied API.
+ * Polling updates task state without storing credentials or replacing open forms.
+ * @param {object} options DOM document, API client, and polling interval (0 disables it).
+ * @returns {object} Initial ready promise, refresh function, snapshot getter, and cleanup.
+ */
 export function mountApp({ document, api, pollInterval = 2000 }) {
   const root = document.getElementById("app");
   const feedback = document.getElementById("feedback");
@@ -15,6 +21,9 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
   const window = document.defaultView;
   let notificationTimer;
 
+  /**
+   * Display a temporary accessible confirmation, replacing the prior timer.
+   */
   function notify(message) {
     feedback.textContent = message;
     feedback.classList.remove("hidden");
@@ -24,6 +33,10 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
       5000,
     );
   }
+  /**
+   * Render the latest snapshot while preserving focus on equivalent controls.
+   * Uses the selected project/tab only; performs no network request.
+   */
   function render() {
     if (!snapshot || stopped) return;
     const focused = root.contains(document.activeElement)
@@ -49,6 +62,9 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
         .find((element) => element.dataset[focusKey] === focusValue)
         ?.focus({ preventScroll: true });
   }
+  /**
+   * Show a recoverable error, including a startup fallback before data loads.
+   */
   function showError(error) {
     const box = document.getElementById("workspace-error");
     if (box) {
@@ -62,6 +78,10 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
     const connection = document.getElementById("connection-status");
     if (connection) connection.textContent = "Connection interrupted";
   }
+  /**
+   * Coalesce concurrent refreshes into one state request and render its result.
+   * @returns {Promise<void>} Resolves after the fetch/render or displayed error.
+   */
   async function refresh() {
     if (pending) return pending;
     pending = (async () => {
@@ -83,10 +103,16 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
     })();
     return pending;
   }
+  /**
+   * Wait out any pre-mutation fetch, then request a fresh backend snapshot.
+   */
   async function afterMutation() {
     if (pending) await pending;
     await refresh();
   }
+  /**
+   * Open the charter/team editor and select the project after it is persisted.
+   */
   function createProject() {
     dialog = openProjectForm(document, async (payload) => {
       const result = await api.createProject(payload);
@@ -96,6 +122,9 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
       notify("Project created. Its charter and assigned team are saved.");
     });
   }
+  /**
+   * Open task assignment for the selected project and show its work after saving.
+   */
   function createGoal() {
     const view = projectView(snapshot, selectedProject);
     if (!view) return;
@@ -106,6 +135,10 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
       notify("Goal submitted. Eligible tasks can now run.");
     });
   }
+  /**
+   * Delegate workspace button actions to navigation, editors, and API mutations.
+   * @param {MouseEvent} event Click bubbling from a supported workspace control.
+   */
   async function click(event) {
     const button = event.target.closest(
       "[data-action], [data-project], [data-cancel], [data-inspect]",
@@ -165,9 +198,16 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
   return {
     ready,
     refresh,
+    /**
+     * Expose the latest backend snapshot for inspection and integration tests.
+     */
     get snapshot() {
       return snapshot;
     },
+    /**
+     * Stop timers, detach listeners, and remove the active dialog.
+     * Does not cancel work already submitted to the backend.
+     */
     destroy() {
       stopped = true;
       if (interval) window.clearInterval(interval);

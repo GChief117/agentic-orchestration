@@ -19,7 +19,10 @@ class Schedule:
 
 
 def conflicts(requested, held):
-    """Readers may share a resource; any overlapping writer must wait."""
+    """Return True when matching resource names include at least one writer.
+
+    Multiple read claims for the same resource do not conflict.
+    """
     return any(
         resource == existing and "write" in (mode, existing_mode)
         for resource, mode in requested
@@ -28,7 +31,12 @@ def conflicts(requested, held):
 
 
 def select_work(tasks, active_ids, limits):
-    """Balance projects, then goals, while respecting every configured capacity."""
+    """Return dispatch candidates and blocked task IDs from the current records.
+
+    Respect dependencies, resource claims, and global/project/agent/target limits.
+    Prefer lower active project and goal loads, using input order for ties. This
+    pure function does not mutate records or launch work.
+    """
     by_id = {task["id"]: task for task in tasks}
     active = [task for task in tasks if task["id"] in active_ids]
     held = [claim for task in active for claim in task["resources"]]
@@ -72,7 +80,7 @@ def select_work(tasks, active_ids, limits):
 
 
 def goal_state(states):
-    """Aggregate task state without hiding active cancellation or failed work."""
+    """Summarize task states into a goal status, prioritizing active cancellation."""
     states = set(states)
     if states == {"accepted"}:
         return "accepted"

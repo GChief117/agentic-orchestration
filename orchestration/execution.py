@@ -13,9 +13,17 @@ class ExecutionCancelled(Exception):
 
 class LocalExecutor:
     def __init__(self, connection):
+        """Attach the local target policy used to authorize and scope operations."""
         self.connection = connection
 
     def execute(self, task, cancelled):
+        """Perform one supported operation and return an evidence-bearing receipt.
+
+        The task includes project/agent identity and normalized parameters. Check
+        cooperative cancellation at operation boundaries; file writes are atomic,
+        inspections compare bytes, and the fixed Python command has a timeout.
+        No language model or remote bridge is invoked by this adapter.
+        """
         capability = task["capability"]
         self.connection.authorize(task["target"], capability)
         params = task["parameters"]

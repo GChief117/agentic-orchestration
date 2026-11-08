@@ -14,6 +14,12 @@ class TaskDefinition:
 
 
 def parse_tasks(tasks, connection, project_id, agents):
+    """Validate an entire task graph and return normalized TaskDefinition records.
+
+    Require project-owned agents, allowed capabilities, valid dependencies, and
+    scoped file paths. Derive resource claims from operations rather than trusting
+    client labels. No tasks are executed or persisted here.
+    """
     if not isinstance(tasks, list) or not tasks or len(tasks) > 1000:
         raise ValueError("A goal requires 1–1000 task definitions")
     identifiers = {}

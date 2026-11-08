@@ -4,18 +4,24 @@ from dataclasses import dataclass
 
 
 def text(value, label, maximum=4000):
+    """Validate and trim a bounded, nonempty string; raise ValueError on failure."""
     if not isinstance(value, str) or not value.strip() or len(value) > maximum:
         raise ValueError(f"{label} must contain 1–{maximum} characters")
     return value.strip()
 
 
 def text_list(value, label, required=False):
+    """Validate a list of text values and return trimmed strings.
+
+    required controls whether an empty list is allowed.
+    """
     if not isinstance(value, list) or (required and not value):
         raise ValueError(f"{label} must be {'a nonempty' if required else 'a'} list")
     return [text(item, label) for item in value]
 
 
 def positive_integer(value, label):
+    """Return a positive integer, rejecting booleans and noninteger values."""
     if type(value) is not int or value < 1:
         raise ValueError(f"{label} must be a positive integer")
     return value
@@ -43,7 +49,11 @@ class ProjectDefinition:
 
 
 def parse_project(document, connection):
-    """Validate the whole charter and organization before storing any records."""
+    """Convert a project document into validated charter and agent definitions.
+
+    Validate roster size, supported capabilities, reporting hierarchy, and
+    concurrency before any database writes. This does not launch agent processes.
+    """
     if not isinstance(document, dict):
         raise ValueError("Project must be an object")
     name = text(document.get("name"), "Project name", 120)

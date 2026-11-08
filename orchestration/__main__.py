@@ -9,6 +9,11 @@ from .engine import Engine
 
 
 def main():
+    """Run a task plan in a new or existing project using explicit execution capacity.
+
+    Print the final snapshot and return a success/failure exit code; always close
+    the engine and request cancellation if the supplied deadline is exceeded.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("plan", type=Path)
     parser.add_argument("--data-dir", type=Path, default=Path(".runtime"))

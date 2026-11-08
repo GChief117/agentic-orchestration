@@ -18,6 +18,13 @@ MAX_REQUEST_BYTES = 262144
 MAX_ARTIFACT_BYTES = 65536
 FRONTEND = ROOT / "frontend"
 STATIC_ASSETS = {
+    **{
+        f"/assets/styles/{name}.css": (
+            FRONTEND / "styles" / f"{name}.css",
+            "text/css; charset=utf-8",
+        )
+        for name in ("base", "layout", "projects", "work", "forms", "responsive")
+    },
     "/assets/styles.css": (FRONTEND / "styles.css", "text/css; charset=utf-8"),
     "/assets/favicon.svg": (FRONTEND / "favicon.svg", "image/svg+xml"),
     **{
@@ -31,18 +38,27 @@ STATIC_ASSETS = {
 
 
 def make_handler(engine, token):
-    """Bind one HTTP handler to the runtime and its ephemeral local session."""
+    """Create an HTTP handler bound to one engine and its private session token.
+
+    The returned class serves the local frontend and authenticated JSON API.
+    """
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
             # HTTP logs must not capture request credentials or artifact contents.
+            """Suppress request logging so headers and artifact content are not recorded."""
             pass
 
         @property
         def origin(self):
+            """Return the canonical loopback origin for this running HTTP server."""
             return f"http://127.0.0.1:{self.server.server_port}"
 
         def send(self, status, value, content_type="application/json"):
+            """Write a JSON or byte response with privacy and content-security headers.
+
+            status is an HTTP code; content_type selects JSON encoding or raw bytes.
+            """
             body = (
                 json.dumps(value).encode()
                 if content_type == "application/json"
@@ -67,9 +83,11 @@ def make_handler(engine, token):
                 pass
 
         def trusted_host(self):
+            """Return whether the request Host matches this exact loopback server."""
             return self.headers.get("Host") == urlparse(self.origin).netloc
 
         def authorized(self):
+            """Check the request host, optional origin, and constant-time bearer token."""
             origin = self.headers.get("Origin")
             return (
                 self.trusted_host()
@@ -80,6 +98,10 @@ def make_handler(engine, token):
             )
 
         def do_GET(self):
+            """Route frontend assets and reads; require authorization for API records.
+
+            Only the local HTML shell receives the session bootstrap credential.
+            """
             if not self.trusted_host():
                 self.send(HTTPStatus.FORBIDDEN, {"error": "Invalid host"})
                 return
@@ -118,6 +140,10 @@ def make_handler(engine, token):
                 self.send(HTTPStatus.NOT_FOUND, {"error": "Not found"})
 
         def serve_artifact(self, task_id):
+            """Return bounded text for the artifact referenced by a known task receipt.
+
+            Task IDs resolve through stored records rather than arbitrary client paths.
+            """
             task = next(
                 (task for task in engine.snapshot()["tasks"] if task["id"] == task_id),
                 None,
@@ -137,6 +163,7 @@ def make_handler(engine, token):
             self.send(HTTPStatus.OK, result)
 
         def read_body(self):
+            """Decode a size-limited JSON object, raising ValueError for invalid bodies."""
             size = int(self.headers.get("Content-Length", "0"))
             if not 0 < size <= MAX_REQUEST_BYTES:
                 raise ValueError("Invalid request size")
@@ -146,6 +173,10 @@ def make_handler(engine, token):
             return data
 
         def do_POST(self):
+            """Validate and route project creation, goal submission, or cancellation.
+
+            Input and permission errors become JSON 400 responses.
+            """
             if not self.authorized():
                 self.send(
                     HTTPStatus.FORBIDDEN,
@@ -178,6 +209,10 @@ def make_handler(engine, token):
 
 
 def main():
+    """Parse server settings, persist a private token, and run the loopback service.
+
+    The engine and HTTP socket are closed when the process stops.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--data-dir", type=Path, default=ROOT / ".runtime")

@@ -14,18 +14,34 @@ const glyphs = {
   people:
     '<circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M18 15a5 5 0 0 1 3 5"/>',
 };
+/**
+ * Return trusted inline SVG for a known icon name; it is hidden from screen readers.
+ */
 export const icon = (name) =>
   `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${glyphs[name] || glyphs.layers}</svg>`;
+/**
+ * Render an escaped empty-state heading and explanation.
+ */
 const empty = (title, body) =>
   `<div class="empty-state"><span class="empty-icon">${icon("layers")}</span><h3>${e(title)}</h3><p>${e(body)}</p></div>`;
+/**
+ * Map a backend state to escaped label markup and a fixed status style.
+ * @returns {string} Accessible status badge markup.
+ */
 export function badge(state) {
   const status = STATUSES[state] || { label: state, tone: "neutral" };
   return `<span class="status ${status.tone}"><span></span>${e(status.label)}</span>`;
 }
+/**
+ * Render an unordered list with every supplied item escaped as text.
+ */
 function bulletList(items) {
   return `<ul class="plain-list">${items.map((item) => `<li>${e(item)}</li>`).join("")}</ul>`;
 }
 
+/**
+ * Render workspace counters derived from actual backend execution state.
+ */
 function metricCards(snapshot) {
   const m = metrics(snapshot);
   return `<div class="metrics">
@@ -36,6 +52,9 @@ function metricCards(snapshot) {
   </div>`;
 }
 
+/**
+ * Render selectable project summaries, or the first-project empty state.
+ */
 function projectCards(snapshot) {
   if (!snapshot.projects.length)
     return `${empty("A place for your next project.", "Define a charter, assemble a team, and turn your goals into accountable work.")}<div class="empty-action"><button class="button primary" data-action="new-project">${icon("plus")} Create a project</button></div>`;
@@ -50,6 +69,9 @@ function projectCards(snapshot) {
     .join("")}</div>`;
 }
 
+/**
+ * Render a project's goal/task rows with ownership, status, and cancellation controls.
+ */
 function goalsView(view) {
   if (!view.goals.length)
     return `${empty("The team is ready for its first goal.", "Give this project a goal and assign each step to a team member.")}<div class="empty-action"><button class="button primary" data-action="new-goal">${icon("plus")} Add a goal</button></div>`;
@@ -62,11 +84,18 @@ function goalsView(view) {
     .join("");
 }
 
+/**
+ * Render persistent agent roles, responsibilities, managers, and active capacity.
+ */
 function teamView(view) {
   const byId = new Map(view.agents.map((agent) => [agent.id, agent]));
   return `<div class="section-intro"><h2>Assigned team</h2><p>Roles stay with this project. Execution slots are allocated as work becomes ready.</p></div><div class="agent-grid">${view.agents.map((agent) => `<article class="panel agent-card"><div class="agent-top"><span class="avatar">${e(agent.name.slice(0, 2).toUpperCase())}</span><span class="status ${agent.state === "busy" ? "active" : "neutral"}"><span></span>${agent.state === "busy" ? "Working" : "Available"}</span></div><h3>${e(agent.name)}</h3><span class="role-label">${e(agent.role)}</span><p class="agent-instructions">${e(agent.instructions)}</p><div class="label">Responsibilities</div>${bulletList(agent.responsibilities)}<div class="capability-tags">${agent.capabilities.map((cap) => `<span>${e(ACTIONS[cap]?.short || cap)}</span>`).join("")}</div><footer><span>Reports to <strong>${e(byId.get(agent.reports_to)?.name || "Project owner")}</strong></span><span>${agent.active_executions} / ${agent.max_concurrency} active</span></footer></article>`).join("")}</div>`;
 }
 
+/**
+ * Render recent events, optionally restricted to task IDs from one project.
+ * Project filtering omits unscoped workspace events.
+ */
 function activityView(snapshot, view = null) {
   const taskIds = view && new Set(view.tasks.map((task) => task.id));
   const events = taskIds
@@ -81,11 +110,21 @@ function activityView(snapshot, view = null) {
   return `<section class="panel"><div class="activity-list">${events.map((event) => `<div class="activity-row"><span class="activity-dot"></span><div><strong>${e(tasks.get(event.task_id)?.title || event.message)}</strong><p>${e(event.message)}</p></div><time datetime="${new Date(event.at * 1000).toISOString()}">${e(new Date(event.at * 1000).toLocaleTimeString())}</time></div>`).join("")}</div></section>`;
 }
 
+/**
+ * Render the selected project charter, capacity summary, and goal overview.
+ */
 function overviewView(snapshot, view) {
   const p = view.project;
   return `<div class="overview-grid"><section class="panel charter"><div class="panel-heading"><h2>Project charter</h2><span class="chip">Greenfield</span></div><div class="charter-body"><span class="label">Objective</span><p class="objective">${e(p.charter.objective)}</p><div class="charter-columns"><div><span class="label">In scope</span>${bulletList(p.charter.scope)}</div><div><span class="label">Success criteria</span>${bulletList(p.charter.success_criteria)}</div></div>${p.charter.constraints.length ? `<span class="label">Constraints</span>${bulletList(p.charter.constraints)}` : ""}</div></section><section class="panel capacity-panel"><h2>Team & capacity</h2><p>Assigned agents and available execution slots are separate.</p><dl><div><dt>Assigned agents</dt><dd>${p.team_size}</dd></div><div><dt>Project concurrency</dt><dd>${p.max_concurrency}</dd></div><div><dt>Currently executing</dt><dd>${p.active_executions}</dd></div><div><dt>Workspace limit</dt><dd>${snapshot.capacity.execution_limit}</dd></div></dl><div class="small-note">Local execution is connected. Model providers and remote adapters are not connected.</div></section></div><div class="section-heading"><h2>Project goals</h2><button class="text-button" data-action="tab" data-tab="work">View all ${icon("arrow")}</button></div>${goalsView(view)}`;
 }
 
+/**
+ * Render the complete navigation shell and selected workspace/project view.
+ * All backend-provided text is escaped; this function neither mounts DOM nor fetches data.
+ * @param {object} snapshot Current backend state.
+ * @param {object} [selection] Selected project, project tab, and workspace tab.
+ * @returns {string} HTML ready for the controller to mount.
+ */
 export function renderWorkspace(
   snapshot,
   { selectedProject = null, tab = "overview", workspaceTab = "projects" } = {},

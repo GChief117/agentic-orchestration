@@ -15,6 +15,11 @@ class Engine:
     def __init__(
         self, directory, *, execution_limit, target_limits=None, executor=None
     ):
+        """Build the local runtime with explicitly supplied global execution capacity.
+
+        Optional target_limits narrow machine capacity. Open persistent storage and
+        prepare coordination state; no scheduler or agent is started automatically.
+        """
         self.execution_limit = positive_integer(execution_limit, "Execution limit")
         if target_limits is None:
             target_limits = {"local-workspace": self.execution_limit}
@@ -39,10 +44,15 @@ class Engine:
         self.closed = False
 
     def _require_open(self):
+        """Raise RuntimeError when mutation is attempted during or after shutdown."""
         if self.closed or self.stopping.is_set():
             raise RuntimeError("Engine is shutting down")
 
     def create_project(self, document):
+        """Validate and atomically persist a charter and roster; return the project ID.
+
+        Creates logical agent identities without starting model-provider processes.
+        """
         definition = parse_project(document, self.connection)
         with self.lock:
             self._require_open()
@@ -51,6 +61,11 @@ class Engine:
         return project_id
 
     def submit(self, project_id, title, tasks):
+        """Validate and atomically queue a goal in an existing project.
+
+        project_id identifies the team; tasks name its agent keys and dependencies.
+        Return a durable goal ID. Submission itself does not wait for execution.
+        """
         if not isinstance(project_id, str):
             raise ValueError("An explicit project ID is required")
         if not isinstance(title, str) or not 1 <= len(title.strip()) <= 120:
@@ -67,6 +82,7 @@ class Engine:
         return goal_id
 
     def start(self):
+        """Start one background scheduler loop, leaving an existing loop unchanged."""
         with self.lock:
             if self.closed or self.stopping.is_set():
                 raise RuntimeError("Engine cannot restart after shutdown")
@@ -77,6 +93,10 @@ class Engine:
                 self.scheduler.start()
 
     def close(self):
+        """Request cooperative worker cancellation, join threads, and close storage.
+
+        Repeated calls after a completed shutdown are harmless.
+        """
         self.stopping.set()
         with self.lock:
             if self.closed:
@@ -94,6 +114,10 @@ class Engine:
             self.closed = True
 
     def cancel_goal(self, goal_id):
+        """Persist cancellation for a goal and signal its active executor attempts.
+
+        Completed results are retained and cancellation does not undo prior effects.
+        """
         with self.lock:
             for task_id in self.store.cancel(goal_id):
                 if task_id in self.active:
@@ -101,10 +125,16 @@ class Engine:
             self.store.commit()
 
     def _loop(self):
+        """Run scheduling ticks until the runtime receives its shutdown signal."""
         while not self.stopping.wait(0.05):
             self.tick()
 
     def tick(self):
+        """Select eligible work and persist dispatch intent before starting threads.
+
+        Hold the coordination lock while reserving capacity and resources so tasks
+        cannot be double-dispatched within this engine.
+        """
         with self.lock:
             if self.stopping.is_set():
                 return
@@ -149,6 +179,11 @@ class Engine:
                 thread.start()
 
     def _run(self, task, cancelled, attempt_id):
+        """Execute one assigned attempt and persist its result or failure.
+
+        Pass project/agent context to the adapter, preserve effect uncertainty on
+        errors, and release the active execution slot after saving the outcome.
+        """
         receipt, error = None, None
         try:
             operation = dict(task, attempt_id=attempt_id)
@@ -179,6 +214,10 @@ class Engine:
             self.threads.pop(task["id"], None)
 
     def snapshot(self):
+        """Return durable records with derived team size, agent activity, and capacity.
+
+        This read does not change scheduling state or launch additional work.
+        """
         with self.lock:
             snapshot = self.store.snapshot()
             snapshot["active_executions"] = len(self.active)

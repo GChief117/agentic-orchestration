@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class LocalServer:
     def __init__(self, directory):
+        """Prepare handles for a disposable local API process and its output directory."""
         self.directory = directory
         self.process = None
         self.log = None
@@ -29,6 +30,10 @@ class LocalServer:
         self.token = None
 
     def start(self):
+        """Launch the real backend, wait for readiness, and load its private credential.
+
+        Use an ephemeral loopback port; never print the credential value.
+        """
         log_path = self.directory / "server.log"
         self.log = log_path.open("w")
         self.process = subprocess.Popen(
@@ -66,6 +71,7 @@ class LocalServer:
         raise TimeoutError("Backend startup timed out")
 
     def stop(self):
+        """Stop only the child backend owned by this test and close its log handle."""
         if self.process and self.process.poll() is None:
             self.process.send_signal(signal.SIGINT)
             try:
@@ -77,6 +83,7 @@ class LocalServer:
             self.log.close()
 
     def request(self, path, body=None, *, authenticated=True):
+        """Make a local JSON API request, optionally omitting authorization for tests."""
         headers = {"Content-Type": "application/json"}
         if authenticated:
             headers["Authorization"] = "Bearer " + self.token
@@ -90,6 +97,10 @@ class LocalServer:
 
 
 def wait_for_goals(server, identifiers):
+    """Poll until specified goals reach terminal states; return the latest snapshot.
+
+    Raise TimeoutError when the test deadline expires.
+    """
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
         state = server.request("/api/state")
@@ -103,6 +114,10 @@ def wait_for_goals(server, identifiers):
 
 
 def check_capacity(state):
+    """Assert recorded intervals respect dependencies and all capacity/resource limits.
+
+    Return the observed peak number of concurrent executions.
+    """
     projects = {
         project["id"]: project["max_concurrency"] for project in state["projects"]
     }
@@ -154,6 +169,11 @@ def check_capacity(state):
 
 
 def run(directory):
+    """Exercise project creation, execution, permissions, artifacts, and restart.
+
+    Write no source changes; return a check summary and always stop the owned
+    backend process, including on failed assertions.
+    """
     server = LocalServer(directory)
     checks = []
     try:
@@ -319,6 +339,7 @@ def run(directory):
 
 
 def main():
+    """Choose a fresh test directory, run the smoke checks, and save a JSON report."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path)
     args = parser.parse_args()

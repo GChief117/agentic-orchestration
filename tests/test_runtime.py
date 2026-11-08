@@ -369,6 +369,14 @@ class HTTPTests(unittest.TestCase):
             self.assertIn("javascript", result.headers["Content-Type"])
             self.assertIn(b"mountApp", result.read())
 
+    def test_css_modules_are_available_with_css_content_type(self):
+        for name in ("base", "layout", "projects", "work", "forms", "responsive"):
+            with self.subTest(name=name), self.request(
+                f"/assets/styles/{name}.css"
+            ) as response:
+                self.assertIn("text/css", response.headers["Content-Type"])
+                self.assertTrue(response.read())
+
     def test_frontend_rejects_cross_origin_bootstrap(self):
         with self.assertRaises(HTTPError) as error:
             self.request("/", headers={"Origin": "https://example.com"})

@@ -8,6 +8,10 @@ import {
 } from "./domain.js";
 import { icon } from "./views.js";
 
+/**
+ * Render an escaped, labeled text, numeric, or multiline form field.
+ * @returns {string} Markup; options control required state, rows, and helper text.
+ */
 function input(label, field, value = "", options = {}) {
   const attrs = `data-field="${field}" aria-label="${e(label)}" ${options.required ? "required" : ""}`;
   const control = options.textarea
@@ -15,14 +19,27 @@ function input(label, field, value = "", options = {}) {
     : `<input ${attrs} type="${options.number ? "number" : "text"}" value="${e(value)}" ${options.number ? 'min="1" step="1"' : 'maxlength="120"'}>`;
   return `<label class="field"><span>${e(label)}</span>${control}${options.hint ? `<small>${e(options.hint)}</small>` : ""}</label>`;
 }
+/**
+ * Read one named field inside the supplied DOM scope, returning empty text if absent.
+ */
 const value = (root, field) =>
   root.querySelector(`[data-field="${field}"]`)?.value ?? "";
+/**
+ * Display a validation or API error inside the active dialog using plain text.
+ */
 const showError = (dialog, error) => {
   const box = dialog.querySelector("[data-error]");
   box.textContent = error.message;
   box.classList.remove("hidden");
 };
 
+/**
+ * Create an accessible dialog shell with cleanup and pending-request protection.
+ * @param {Document} document Document in which to mount the editor.
+ * @param {string} title Dialog heading and accessible label.
+ * @param {string} subtitle Short context label.
+ * @returns {object} Dialog element and busy-state controls; opening mutates the DOM.
+ */
 function mountDialog(document, title, subtitle) {
   const dialog = document.createElement("dialog");
   dialog.className = "editor-dialog";
@@ -44,9 +61,15 @@ function mountDialog(document, title, subtitle) {
   }
   return {
     dialog,
+    /**
+     * Report whether the dialog is waiting for a submission to finish.
+     */
     get pending() {
       return pending;
     },
+    /**
+     * Disable editor controls and update the submit label during a request.
+     */
     busy(flag) {
       pending = flag;
       dialog
@@ -60,6 +83,13 @@ function mountDialog(document, title, subtitle) {
   };
 }
 
+/**
+ * Open an editable charter and agent-roster form.
+ * Validate a draft before awaiting onSubmit; retain the form when submission fails.
+ * @param {Document} document Host document.
+ * @param {function(object): Promise<*>} onSubmit Persists the project payload.
+ * @returns {HTMLDialogElement} Mounted project editor.
+ */
 export function openProjectForm(document, onSubmit) {
   const controller = mountDialog(
     document,
@@ -67,6 +97,9 @@ export function openProjectForm(document, onSubmit) {
     "Greenfield workspace",
   );
   const { dialog } = controller;
+  /**
+   * Create a fresh empty roster row; its concurrency remains editable.
+   */
   const blankAgent = () => ({
     key: "",
     name: "",
@@ -87,6 +120,9 @@ export function openProjectForm(document, onSubmit) {
     agents: [blankAgent()],
   };
   const content = dialog.querySelector("[data-content]");
+  /**
+   * Collect the project editor values and roster rows without validating or saving them.
+   */
   function read() {
     return {
       ...Object.fromEntries(
@@ -117,6 +153,9 @@ export function openProjectForm(document, onSubmit) {
       })),
     };
   }
+  /**
+   * Rebuild the project editor from its draft and bind add/remove/submit actions.
+   */
   function render() {
     content.innerHTML = `<form data-project-form><div class="dialog-body"><div class="notice info">Your charter defines the work. Your roster defines who owns it. Execution limits control how much can run together.</div><div class="form-section-heading"><h3>01 · Project charter</h3><button type="button" class="text-button" data-example>Use example</button></div>${input("Project name", "name", draft.name, { required: true })}${input("Objective", "objective", draft.objective, { required: true, textarea: true })}<div class="form-grid">${input("In scope", "scope", draft.scope, { required: true, textarea: true, hint: "One item per line" })}${input("Success criteria", "success_criteria", draft.success_criteria, { required: true, textarea: true, hint: "One item per line" })}</div><div class="form-grid">${input("Constraints", "constraints", draft.constraints, { textarea: true })}${input("Project concurrency", "max_concurrency", draft.max_concurrency, { number: true, required: true, hint: "Maximum simultaneous executions for this project" })}</div><div class="form-section-heading"><div><h3>02 · Assigned team</h3><p>${draft.agents.length} agent${draft.agents.length === 1 ? "" : "s"} · team size is derived from this roster</p></div><button type="button" class="button" data-add-agent>${icon("plus")} Add agent</button></div><div class="team-editors">${draft.agents
       .map(
@@ -198,12 +237,22 @@ export function openProjectForm(document, onSubmit) {
   return dialog;
 }
 
+/**
+ * Open a goal editor scoped to an existing project and its assigned roster.
+ * @param {Document} document Host document.
+ * @param {object} view Project and agents returned by projectView.
+ * @param {function(object): Promise<*>} onSubmit Persists the validated task graph.
+ * @returns {HTMLDialogElement} Mounted task editor.
+ */
 export function openGoalForm(document, view, onSubmit) {
   const controller = mountDialog(document, "Define a goal", view.project.name);
   const { dialog } = controller;
   const content = dialog.querySelector("[data-content]");
   let title = "",
     nextId = 1;
+  /**
+   * Create a task draft with a stable local ID and the first available agent/action.
+   */
   function blankTask() {
     const agent = view.agents[0];
     return {
@@ -219,6 +268,9 @@ export function openGoalForm(document, view, onSubmit) {
     };
   }
   let tasks = [blankTask()];
+  /**
+   * Collect task rows, comparison fields, and dependency selections from the goal editor.
+   */
   function read() {
     title = value(content, "goal-title");
     return [...content.querySelectorAll("[data-task]")].map((row) => ({
@@ -234,6 +286,9 @@ export function openGoalForm(document, view, onSubmit) {
       ),
     }));
   }
+  /**
+   * Render task editors, constrain action choices by agent, and bind graph editing.
+   */
   function render() {
     content.innerHTML = `<form data-goal-form><div class="dialog-body"><div class="notice info">Tasks run through the connected local backend. Each task needs an assigned agent with the right capability.</div>${input("Goal title", "goal-title", title, { required: true })}<div class="form-section-heading"><h3>Tasks & dependencies</h3><button class="text-button" type="button" data-example>Use release example</button></div>${tasks
       .map((task, index) => {
@@ -311,6 +366,15 @@ export function openGoalForm(document, view, onSubmit) {
   return dialog;
 }
 
+/**
+ * Open execution evidence and fetch its artifact when a receipt references one.
+ * Render receipt and artifact text without interpreting it as HTML.
+ * @param {Document} document Host document.
+ * @param {object} task Selected backend task.
+ * @param {object|undefined} agent Assigned agent record if available.
+ * @param {object} api API client used for artifact retrieval.
+ * @returns {Promise<HTMLDialogElement>} Mounted evidence dialog.
+ */
 export async function openTaskDetails(document, task, agent, api) {
   const { dialog } = mountDialog(document, task.title, "Task evidence");
   dialog.classList.add("evidence-dialog");

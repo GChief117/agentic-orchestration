@@ -10,6 +10,11 @@ import uuid
 
 class Store:
     def __init__(self, directory):
+        """Acquire exclusive ownership of a data directory and open its SQLite store.
+
+        Create or migrate tables and mark interrupted attempts failed without replaying
+        their potentially completed effects. A second engine on the directory fails.
+        """
         directory = Path(directory)
         directory.mkdir(parents=True, exist_ok=True)
         self.lease = (directory / "engine.lock").open("a")
@@ -46,6 +51,10 @@ class Store:
         self.db.commit()
 
     def _migrate_projects(self):
+        """Add project/agent storage and block legacy queued tasks without owners.
+
+        Preserve existing records rather than assigning them to invented projects.
+        """
         self.db.executescript(
             """
             CREATE TABLE IF NOT EXISTS projects(
@@ -76,6 +85,10 @@ class Store:
         )
 
     def create_project(self, definition):
+        """Stage a validated charter and its persistent agent roster; return project ID.
+
+        Resolve reporting keys to stored agent IDs. The caller owns the transaction.
+        """
         project_id = uuid.uuid4().hex
         agent_ids = {agent.key: uuid.uuid4().hex for agent in definition.agents}
         self.db.execute(
@@ -112,6 +125,7 @@ class Store:
         return project_id
 
     def project(self, project_id):
+        """Load a project and decode its charter, or raise ValueError for an unknown ID."""
         row = self.db.execute(
             "SELECT * FROM projects WHERE id=?", (project_id,)
         ).fetchone()
@@ -120,6 +134,7 @@ class Store:
         return self.decode(row)
 
     def agents(self, project_id=None):
+        """Return decoded agent records, optionally restricted to one project."""
         if project_id is None:
             rows = self.db.execute("SELECT * FROM agents ORDER BY rowid")
         else:
@@ -129,12 +144,18 @@ class Store:
         return [self.decode(row) for row in rows]
 
     def event(self, task_id, message):
+        """Append a timestamped event to the current transaction without committing it."""
         self.db.execute(
             "INSERT INTO events(at,task_id,message) VALUES(?,?,?)",
             (time.time(), task_id, message),
         )
 
     def create_goal(self, project_id, title, definitions, target):
+        """Stage a goal and normalized tasks, returning the generated goal ID.
+
+        Link each task to its project and agent; translate plan-local dependency
+        indices into durable task IDs. The caller commits the transaction.
+        """
         goal_id = uuid.uuid4().hex
         identifiers = [uuid.uuid4().hex for _ in definitions]
         self.db.execute(
@@ -170,6 +191,7 @@ class Store:
 
     @staticmethod
     def decode(row):
+        """Copy a SQLite row to a dictionary and decode its JSON-valued columns."""
         value = dict(row)
         for key in (
             "parameters",
@@ -185,13 +207,17 @@ class Store:
         return value
 
     def tasks(self):
+        """Return task records in insertion order, including their latest receipts."""
         return [
             self.decode(row)
             for row in self.db.execute("SELECT * FROM tasks ORDER BY rowid")
         ]
 
     def scheduling_state(self):
-        """Read only records needed for dispatch, excluding historical receipts/events."""
+        """Return projects, agents, and tasks needed for a dispatch decision.
+
+        Avoid loading the full attempt and event history on every scheduler tick.
+        """
         return {
             "projects": [
                 self.decode(row)
@@ -202,6 +228,7 @@ class Store:
         }
 
     def snapshot(self):
+        """Return decoded project, agent, task, goal, event, and attempt records."""
         return {
             **self.scheduling_state(),
             "goals": [
@@ -221,6 +248,10 @@ class Store:
         }
 
     def start(self, task):
+        """Stage a running task and a new attempt before any external effects occur.
+
+        Return the attempt ID; persistence is finalized by the caller transaction.
+        """
         attempt_id = uuid.uuid4().hex
         now = time.time()
         self.db.execute(
@@ -241,6 +272,10 @@ class Store:
         return attempt_id
 
     def finish(self, task_id, state, receipt, error=None):
+        """Stage a task outcome, update its running attempt, and append an event.
+
+        Retain the supplied receipt and error; do not commit the transaction here.
+        """
         now = time.time()
         encoded = json.dumps(receipt) if receipt else None
         self.db.execute(
@@ -254,9 +289,14 @@ class Store:
         self.event(task_id, f"{state.capitalize()}: {task_id}")
 
     def block(self, task_id):
+        """Mark a task blocked because a prerequisite did not pass acceptance."""
         self.finish(task_id, "blocked", None, "Dependency did not pass acceptance")
 
     def cancel(self, goal_id):
+        """Stage queued-task cancellation and active-task cancellation requests.
+
+        Return the active task IDs whose executor signals must also be notified.
+        """
         if not self.db.execute(
             "SELECT id FROM goals WHERE id=?", (goal_id,)
         ).fetchone():
@@ -276,9 +316,11 @@ class Store:
         return active
 
     def commit(self):
+        """Commit staged state changes and events to SQLite."""
         self.db.commit()
 
     def close(self):
+        """Close SQLite and release the exclusive data-directory lock."""
         self.db.close()
         fcntl.flock(self.lease, fcntl.LOCK_UN)
         self.lease.close()

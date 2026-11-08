@@ -7,7 +7,11 @@ from pathlib import Path
 
 
 def validate(plan):
-    """Return human-readable errors. Never execute any content from a plan."""
+    """Return structural errors for the illustrative static batch-plan format.
+
+    Check IDs, references, cycles, capacities, and declared resource conflicts.
+    This validator neither executes tasks nor validates runtime project records.
+    """
     errors = []
     if not isinstance(plan, dict):
         return ["plan must be an object"]
@@ -15,9 +19,11 @@ def validate(plan):
         errors.append("version must be 0.1")
 
     def nonempty_text(value):
+        """Return whether a value is a string containing non-whitespace text."""
         return isinstance(value, str) and bool(value.strip())
 
     def text_list(value, nonempty=False):
+        """Return whether a value is a list of valid strings, optionally nonempty."""
         return (
             isinstance(value, list)
             and (bool(value) or not nonempty)
@@ -25,6 +31,7 @@ def validate(plan):
         )
 
     def records(key):
+        """Index named plan records by ID while collecting shape and duplicate errors."""
         values = plan.get(key)
         if not isinstance(values, list) or not values:
             errors.append(f"{key} must be a nonempty list")
@@ -154,6 +161,7 @@ def validate(plan):
 
 
 def main():
+    """Load a static plan from disk and exit nonzero when structural checks fail."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("plan", type=Path)
     args = parser.parse_args()

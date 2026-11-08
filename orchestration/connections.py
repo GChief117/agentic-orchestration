@@ -7,10 +7,15 @@ class LocalConnection:
     CAPABILITIES = ("files.write", "files.inspect", "terminal.python_version")
 
     def __init__(self, workspace):
+        """Resolve and create the root directory for this local execution target."""
         self.workspace = Path(workspace).resolve()
         self.workspace.mkdir(parents=True, exist_ok=True)
 
     def describe(self):
+        """Return local target identity, supported capabilities, and its file scope.
+
+        This is a local configuration description, not a remote connectivity probe.
+        """
         return {
             "id": "local-workspace",
             "name": "Local workspace",
@@ -22,12 +27,17 @@ class LocalConnection:
         }
 
     def authorize(self, target, capability):
+        """Raise PermissionError unless both target and capability are supported."""
         if target != "local-workspace":
             raise PermissionError("Target is unavailable; no fallback is permitted")
         if capability not in self.CAPABILITIES:
             raise PermissionError("Capability is not supported by this target")
 
     def path(self, name):
+        """Resolve an artifact-relative name inside the target root.
+
+        Reject absolute paths, root selection, and paths resolving outside the root.
+        """
         if not isinstance(name, str) or not name or Path(name).is_absolute():
             raise PermissionError("An artifact-relative path is required")
         candidate = (self.workspace / name).resolve()
@@ -36,7 +46,10 @@ class LocalConnection:
         return candidate
 
     def project_path(self, project_id, name):
-        """Constrain paths within a project, not merely within the service workspace."""
+        """Resolve an artifact path inside one project namespace.
+
+        Validate the project identifier and reject traversal outside its directory.
+        """
         if not isinstance(project_id, str) or not project_id.isalnum():
             raise PermissionError("Invalid project identity")
         if not isinstance(name, str) or not name or Path(name).is_absolute():

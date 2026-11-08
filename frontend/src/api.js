@@ -1,4 +1,12 @@
+/**
+ * An API failure that retains its HTTP status for UI handling.
+ */
 export class ApiError extends Error {
+  /**
+   * Create an error from a user-facing message and HTTP status code.
+   * @param {string} message Explanation suitable for the interface.
+   * @param {number} status HTTP response status.
+   */
   constructor(message, status) {
     super(message);
     this.name = "ApiError";
@@ -6,7 +14,14 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Small JSON client shared by all frontend views. Credentials stay in memory.
+ */
 export class ApiClient {
+  /**
+   * Configure the local API connection and an optional injectable fetch function.
+   * @param {object} options In-memory token, optional baseUrl, and fetch implementation.
+   */
   constructor({
     token,
     fetch: request = (...args) => globalThis.fetch(...args),
@@ -17,6 +32,13 @@ export class ApiClient {
     this.baseUrl = baseUrl;
   }
 
+  /**
+   * Send a JSON request and normalize backend error responses.
+   * Omitting body makes a GET; providing body makes a POST. No automatic retries.
+   * @param {string} path Relative API route.
+   * @param {object} [body] JSON-serializable request data.
+   * @returns {Promise<object>} Decoded response; rejects for HTTP or network failures.
+   */
   async send(path, body) {
     const response = await this.request(this.baseUrl + path, {
       method: body === undefined ? "GET" : "POST",
@@ -46,18 +68,42 @@ export class ApiClient {
     return result;
   }
 
+  /**
+   * Fetch current projects, agents, tasks, receipts, and capacity.
+   * @returns {Promise<object>} Backend workspace snapshot.
+   */
   state() {
     return this.send("/api/state");
   }
+  /**
+   * Persist a validated charter and agent roster.
+   * @param {object} project Project definition produced by projectPayload.
+   * @returns {Promise<{id: string}>} Newly created project identity.
+   */
   createProject(project) {
     return this.send("/api/projects", project);
   }
+  /**
+   * Queue an explicitly assigned task graph in its project.
+   * @param {object} goal Goal definition produced by goalPayload.
+   * @returns {Promise<{id: string}>} Newly created goal identity.
+   */
   submitGoal(goal) {
     return this.send("/api/goals", goal);
   }
+  /**
+   * Request cancellation while retaining already completed work.
+   * @param {string} id Durable goal identity.
+   * @returns {Promise<object>} Cancellation acknowledgment, not a rollback guarantee.
+   */
   cancelGoal(id) {
     return this.send("/api/cancel", { id });
   }
+  /**
+   * Read the artifact referenced by a task receipt.
+   * @param {string} taskId Durable task identity, encoded as one path segment.
+   * @returns {Promise<{name: string, content: string}>} Artifact name and text.
+   */
   artifact(taskId) {
     return this.send(`/api/artifact/${encodeURIComponent(taskId)}`);
   }

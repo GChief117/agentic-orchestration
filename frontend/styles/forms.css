@@ -1,0 +1,226 @@
+/* Notices, feedback, editor dialogs, form fields, and evidence panels. */
+
+.notice {
+  font-size: 12px;
+  line-height: 1.7;
+  padding: 13px 16px;
+  border: 1px solid;
+  border-radius: 7px;
+  margin-bottom: 20px;
+}
+.notice.info {
+  background: #f3f7f2;
+  border-color: #e1e9df;
+  color: #72876f;
+}
+.notice.danger {
+  background: #fff4f1;
+  border-color: #efd6cf;
+  color: #a25a4e;
+}
+.feedback {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #193c2c;
+  color: #edf8ec;
+  padding: 13px 21px;
+  border-radius: 8px;
+  box-shadow: 0 6px 30px #16302120;
+  z-index: 1000;
+  font-size: 12px;
+  max-width: 90vw;
+}
+.startup {
+  grid-column: 1/-1;
+  text-align: center;
+  padding-top: 15vh;
+}
+.startup p {
+  color: var(--muted);
+}
+.editor-dialog {
+  width: min(900px, calc(100vw - 36px));
+  max-height: calc(100vh - 50px);
+  padding: 0;
+  border: 1px solid #dbe5dc;
+  border-radius: 13px;
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 24px 100px #14241e38;
+}
+.editor-dialog::backdrop {
+  background: #13201977;
+  backdrop-filter: blur(3px);
+}
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 28px;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 1;
+}
+.dialog-header h2 {
+  font-size: 23px;
+  margin-top: 6px;
+}
+.dialog-body {
+  padding: 26px 28px;
+}
+.dialog-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 25px;
+  padding: 18px 28px;
+  border-top: 1px solid var(--line);
+  background: #fafcf9;
+  position: sticky;
+  bottom: 0;
+}
+.dialog-footer > span {
+  color: #8b9d8b;
+  font-size: 10px;
+  max-width: 430px;
+  line-height: 1.6;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 18px;
+  min-width: 0;
+}
+.field > span {
+  font-size: 11px;
+  color: #657f6b;
+  font-weight: 550;
+}
+.field small {
+  font-size: 10px;
+  color: #94a58f;
+  line-height: 1.5;
+}
+input:not([type="checkbox"]),
+textarea,
+select {
+  border: 1px solid #d8e2d7;
+  background: #fff;
+  color: #254b32;
+  padding: 10px 12px;
+  border-radius: 6px;
+  width: 100%;
+  font-size: 12px;
+  line-height: 1.5;
+}
+textarea {
+  resize: vertical;
+  min-height: 75px;
+}
+input[type="checkbox"] {
+  accent-color: var(--green);
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.form-grid.three {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+.form-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 12px 0 22px;
+  gap: 20px;
+}
+.form-section-heading p {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 7px 0;
+}
+.agent-editor,
+.task-editor {
+  border: 1px solid var(--line);
+  background: #fcfdfb;
+  border-radius: 9px;
+  padding: 20px;
+  margin: 0 0 24px;
+  min-width: 0;
+}
+legend {
+  font-size: 11px;
+  font-weight: 600;
+  color: #58725b;
+  padding: 0 8px;
+}
+.capability-picker,
+.dependency-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 8px 0 15px;
+}
+.capability-picker > .label,
+.dependency-picker > .label {
+  flex-basis: 100%;
+  margin-bottom: 1px;
+}
+.capability-picker label,
+.dependency-picker label,
+.checkbox-line {
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #708870;
+}
+.checkbox-line {
+  margin-bottom: 15px;
+}
+.evidence-dialog {
+  width: min(760px, calc(100vw - 36px));
+}
+.evidence-meta {
+  display: flex;
+  gap: 25px;
+  margin: 0 0 23px;
+  flex-wrap: wrap;
+}
+.evidence-meta dt {
+  font-size: 9px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: #93a38e;
+}
+.evidence-meta dd {
+  font-size: 12px;
+  margin: 7px 0 0;
+}
+.evidence-dialog pre {
+  background: #f4f6f1;
+  border: 1px solid #e4eade;
+  padding: 16px;
+  border-radius: 7px;
+  font:
+    11px/1.8 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 350px;
+  overflow: auto;
+}
+.evidence-dialog h3 {
+  margin: 20px 0 12px;
+}

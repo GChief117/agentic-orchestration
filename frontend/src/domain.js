@@ -1,3 +1,6 @@
+/**
+ * Human-readable labels for capabilities supported by the local backend.
+ */
 export const ACTIONS = {
   "files.write": { label: "Write a file", short: "File write" },
   "files.inspect": { label: "Inspect a file", short: "File check" },
@@ -7,6 +10,9 @@ export const ACTIONS = {
   },
 };
 
+/**
+ * Display labels and fixed CSS tones for backend task and goal states.
+ */
 export const STATUSES = {
   accepted: { label: "Verified", tone: "success" },
   queued: { label: "Waiting", tone: "neutral" },
@@ -17,6 +23,11 @@ export const STATUSES = {
   blocked: { label: "Blocked", tone: "warning" },
 };
 
+/**
+ * Escape text before inserting it into generated HTML or attribute values.
+ * @param {*} value Value to render as plain text.
+ * @returns {string} HTML-escaped text; this is not an HTML sanitizer.
+ */
 export function escapeHtml(value) {
   return String(value ?? "").replace(
     /[&<>"']/g,
@@ -31,6 +42,12 @@ export function escapeHtml(value) {
   );
 }
 
+/**
+ * Select one project and its associated agents, goals, and tasks.
+ * @param {object} snapshot Workspace state from the backend.
+ * @param {string} id Project identity.
+ * @returns {object|null} Project-scoped records, or null when absent.
+ */
 export function projectView(snapshot, id) {
   const project = snapshot.projects.find((item) => item.id === id);
   if (!project) return null;
@@ -40,6 +57,11 @@ export function projectView(snapshot, id) {
   return { project, agents, goals, tasks };
 }
 
+/**
+ * Derive workspace counters without treating assigned agents as running work.
+ * @param {object} snapshot Backend state containing explicit execution counts.
+ * @returns {object} Project, agent, active-execution, capacity, and verified totals.
+ */
 export function metrics(snapshot) {
   return {
     projects: snapshot.projects.length,
@@ -50,12 +72,20 @@ export function metrics(snapshot) {
   };
 }
 
+/**
+ * Trim a required form value or throw an error naming the missing field.
+ * @returns {string} Nonempty field text.
+ */
 function required(value, label) {
   const result = String(value ?? "").trim();
   if (!result) throw new Error(`${label} is required.`);
   return result;
 }
 
+/**
+ * Parse a positive safe integer, rejecting fractional and empty form values.
+ * @returns {number} Validated whole-number capacity.
+ */
 function positive(value, label) {
   const result = Number(value);
   if (!Number.isSafeInteger(result) || result < 1)
@@ -63,6 +93,10 @@ function positive(value, label) {
   return result;
 }
 
+/**
+ * Split multiline form input into trimmed, nonempty list entries.
+ * @returns {string[]} Values ready for JSON payloads.
+ */
 function lines(value) {
   return String(value ?? "")
     .split("\n")
@@ -70,6 +104,13 @@ function lines(value) {
     .filter(Boolean);
 }
 
+/**
+ * Build a project document from editable form values.
+ * Validate required fields, roster keys, reporting cycles, and team capacity.
+ * The backend still enforces all authoritative checks.
+ * @param {object} draft Form values, including string-valued capacity fields.
+ * @returns {object} Project creation payload; throws for invalid input.
+ */
 export function projectPayload(draft) {
   const agents = draft.agents.map((agent, index) => ({
     key: required(agent.key, `Agent ${index + 1} key`),
@@ -137,6 +178,15 @@ export function projectPayload(draft) {
   };
 }
 
+/**
+ * Build an assigned task graph and validate its client-side constraints.
+ * Check capabilities, relative paths, and dependency cycles without executing work.
+ * @param {string} projectId Destination project.
+ * @param {string} title Goal title.
+ * @param {object[]} drafts Editable task rows.
+ * @param {object[]} agents Roster whose keys and capabilities may be assigned.
+ * @returns {object} Goal submission payload; throws for invalid input.
+ */
 export function goalPayload(projectId, title, drafts, agents) {
   if (!drafts.length) throw new Error("Add at least one task.");
   const team = new Map(agents.map((agent) => [agent.key, agent]));
@@ -173,6 +223,10 @@ export function goalPayload(projectId, title, drafts, agents) {
     throw new Error("Task identifiers must be unique.");
   const visiting = new Set(),
     complete = new Set();
+  /**
+   * Traverse task dependencies to detect unknown references and cycles.
+   * Mutates only the local visiting/complete sets used by goalPayload.
+   */
   function visit(id) {
     if (!byId.has(id))
       throw new Error("A dependency refers to a removed task.");
@@ -187,7 +241,15 @@ export function goalPayload(projectId, title, drafts, agents) {
   return { project_id: projectId, title: required(title, "Goal title"), tasks };
 }
 
+/**
+ * Return an editable example charter and three-role team.
+ * These values are form suggestions, not backend defaults or saved records.
+ * @returns {object} A fresh form draft.
+ */
 export function starterProject() {
+  /**
+   * Build one example agent row with a single capability and optional manager.
+   */
   const agent = (key, name, role, capability, instructions, parent) => ({
     key,
     name,
@@ -236,7 +298,15 @@ export function starterProject() {
   };
 }
 
+/**
+ * Create editable release tasks using capable agents from the current roster.
+ * @param {object[]} agents Project team; every required action needs a match.
+ * @returns {object[]} Fresh task drafts; throws when the example cannot be assigned.
+ */
 export function starterTasks(agents) {
+  /**
+   * Find the first roster key permitted to perform the example capability.
+   */
   const owner = (capability) =>
     agents.find((agent) => agent.capabilities.includes(capability))?.key;
   if (!Object.keys(ACTIONS).every(owner))

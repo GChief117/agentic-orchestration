@@ -32,3 +32,16 @@ npm test --prefix frontend
 ```
 
 Tests use Node and jsdom. The integration test starts a real Python backend and drives DOM events through project creation, task execution, and artifact inspection. It does not launch a browser or replace visual browser QA. `node_modules/` and private runtime data are ignored by Git.
+
+## CSS organization
+
+`styles.css` is the stylesheet entry point. Its imports preserve the original cascade in this order:
+
+1. `styles/base.css`: theme tokens, reset, focus, and shared defaults.
+2. `styles/layout.css`: application shell, navigation, headings, and buttons.
+3. `styles/projects.css`: metrics, project cards, and empty states.
+4. `styles/work.css`: charters, teams, tasks, status badges, and activity.
+5. `styles/forms.css`: feedback, dialogs, fields, and evidence panels.
+6. `styles/responsive.css`: breakpoints and reduced-motion overrides.
+
+Keep responsive overrides last. Add component-specific rules to their owning file instead of growing the entry point. Function references live beside the JavaScript implementations as JSDoc; Python functions use docstrings.
