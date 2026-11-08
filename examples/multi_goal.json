@@ -1,0 +1,164 @@
+{
+  "version": "0.1",
+  "goals": [
+    {
+      "id": "research",
+      "acceptance": [
+        "Comparison cites primary sources and states uncertainty."
+      ]
+    },
+    {
+      "id": "release",
+      "acceptance": [
+        "Implementation passes tests and release notes match verified changes."
+      ]
+    }
+  ],
+  "agents": [
+    {
+      "id": "researcher",
+      "capacity": 1
+    },
+    {
+      "id": "builder",
+      "capacity": 1
+    },
+    {
+      "id": "reviewer",
+      "capacity": 1
+    }
+  ],
+  "tasks": [
+    {
+      "id": "research_sources",
+      "goal": "research",
+      "owner": "researcher",
+      "depends_on": [],
+      "acceptance": [
+        "Sources have provenance and relevance."
+      ],
+      "resources": [
+        {
+          "name": "source-notes",
+          "mode": "write"
+        }
+      ]
+    },
+    {
+      "id": "implement",
+      "goal": "release",
+      "owner": "builder",
+      "depends_on": [],
+      "acceptance": [
+        "Requested behavior is implemented."
+      ],
+      "resources": [
+        {
+          "name": "code",
+          "mode": "write"
+        }
+      ]
+    },
+    {
+      "id": "synthesize",
+      "goal": "research",
+      "owner": "researcher",
+      "depends_on": [
+        "research_sources"
+      ],
+      "acceptance": [
+        "Comparison distinguishes findings and proposals."
+      ],
+      "resources": [
+        {
+          "name": "source-notes",
+          "mode": "read"
+        },
+        {
+          "name": "comparison",
+          "mode": "write"
+        }
+      ]
+    },
+    {
+      "id": "test",
+      "goal": "release",
+      "owner": "reviewer",
+      "depends_on": [
+        "implement"
+      ],
+      "acceptance": [
+        "Independent acceptance tests pass."
+      ],
+      "resources": [
+        {
+          "name": "code",
+          "mode": "read"
+        },
+        {
+          "name": "test-report",
+          "mode": "write"
+        }
+      ]
+    },
+    {
+      "id": "release_notes",
+      "goal": "release",
+      "owner": "builder",
+      "depends_on": [
+        "synthesize",
+        "test"
+      ],
+      "acceptance": [
+        "Notes accurately reflect accepted research and test evidence."
+      ],
+      "resources": [
+        {
+          "name": "comparison",
+          "mode": "read"
+        },
+        {
+          "name": "test-report",
+          "mode": "read"
+        },
+        {
+          "name": "release-document",
+          "mode": "write"
+        }
+      ]
+    },
+    {
+      "id": "verify_release",
+      "goal": "release",
+      "owner": "reviewer",
+      "depends_on": [
+        "release_notes"
+      ],
+      "acceptance": [
+        "Integrated release meets goal acceptance criteria."
+      ],
+      "resources": [
+        {
+          "name": "release-document",
+          "mode": "read"
+        }
+      ]
+    }
+  ],
+  "batches": [
+    [
+      "research_sources",
+      "implement"
+    ],
+    [
+      "synthesize",
+      "test"
+    ],
+    [
+      "release_notes"
+    ],
+    [
+      "verify_release"
+    ]
+  ]
+}
