@@ -57,6 +57,7 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
       selectedProject,
       tab,
       workspaceTab,
+      brandStyle: document.documentElement.dataset.brandStyle,
     });
     document.getElementById("connection-status").textContent =
       "Local · connected";

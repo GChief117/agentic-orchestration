@@ -1,3 +1,9 @@
+import {
+  BRAND_STYLES,
+  renderBrand,
+  applyBrandStyle,
+  initializeBrandStyle,
+} from "./branding.js";
 import { mountDialog } from "./form-controls.js";
 
 export const APPEARANCES = {
@@ -63,6 +69,7 @@ export function applyAppearance(document, name, persist = true) {
 
 /** Restore the visual preference without changing project data or app behavior. */
 export function initializeAppearance(document) {
+  initializeBrandStyle(document);
   let name = "original";
   try {
     name =
@@ -101,7 +108,16 @@ export function openAppearanceForm(document) {
     )
     .join(
       "",
-    )} </div><div class="warm-typography" data-warm-type-panel hidden><h3>Compare editorial serif headings</h3><p>Six heading styles with the same body font and warm palette. Click a sample to apply it.</p><div class="typography-options">${Object.entries(
+    )} </div><section class="brand-options-section"><h3>Sidebar branding</h3><p>Compare the name and icon treatments. Click one to apply it.</p><div class="brand-options">${Object.entries(
+    BRAND_STYLES,
+  )
+    .map(
+      ([key, name]) =>
+        `<button type="button" class="brand-option" data-brand-option="${key}" aria-pressed="false"><span class="brand-option-name">${name}</span><span class="brand-preview">${renderBrand(key)}</span></button>`,
+    )
+    .join(
+      "",
+    )}</div></section><div class="warm-typography" data-warm-type-panel hidden><h3>Compare editorial serif headings</h3><p>Six heading styles with the same body font and warm palette. Click a sample to apply it.</p><div class="typography-options">${Object.entries(
     WARM_TYPOGRAPHY,
   )
     .map(
@@ -121,6 +137,14 @@ export function openAppearanceForm(document) {
         "aria-pressed",
         String(button.dataset.warmType === typography),
       );
+    for (const button of content.querySelectorAll("[data-brand-option]"))
+      button.setAttribute(
+        "aria-pressed",
+        String(
+          button.dataset.brandOption ===
+            (document.documentElement.dataset.brandStyle || "arrow"),
+        ),
+      );
     for (const button of content.querySelectorAll("[data-appearance]"))
       button.setAttribute(
         "aria-pressed",
@@ -130,6 +154,12 @@ export function openAppearanceForm(document) {
       `${APPEARANCES[selected].name} applied. Close this panel to explore the app.`;
   }
   content.addEventListener("click", (event) => {
+    const brand = event.target.closest("[data-brand-option]");
+    if (brand) {
+      applyBrandStyle(document, brand.dataset.brandOption);
+      update();
+      return;
+    }
     const font = event.target.closest("[data-warm-type]");
     if (font) {
       applyWarmTypography(document, font.dataset.warmType);

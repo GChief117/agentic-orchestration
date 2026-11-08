@@ -59,6 +59,7 @@ STATIC_ASSETS = {
             "provider-form",
             "import-form",
             "appearance",
+            "branding",
         )
     },
 }
