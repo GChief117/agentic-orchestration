@@ -5,7 +5,8 @@ export const BRAND_STYLES = {
   monogram: "Framed monogram",
   connected: "Connected nodes",
   minimal: "Minimal accent",
-  seal: "Square seal",
+  seal: "Circular seal",
+  square: "Square seal",
 };
 
 /** Render one trusted brand lockup for both the sidebar and its exact preview. */
@@ -19,6 +20,7 @@ export function renderBrand(style = "arrow") {
       '<span class="brand-icon" aria-hidden="true"><svg viewBox="0 0 32 32" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 10v6M8 23v-7h16v7"/><circle cx="16" cy="7" r="3"/><circle cx="8" cy="25" r="3"/><circle cx="24" cy="25" r="3"/></svg></span>',
     minimal: '<span class="brand-accent" aria-hidden="true"></span>',
     seal: '<span class="brand-icon" aria-hidden="true">O</span>',
+    square: '<span class="brand-icon" aria-hidden="true">O</span>',
   };
   return `<span class="brand-lockup brand-variant-${style}">${marks[style]}<span class="brand-copy"><span class="brand-title">Orchestration</span><small>Project workspace</small></span></span>`;
 }

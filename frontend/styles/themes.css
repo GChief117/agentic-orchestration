@@ -391,6 +391,10 @@
   font-size: 10px;
 }
 .brand-variant-seal .brand-icon {
+  border-radius: 50%;
+  font: 400 25px/1 Georgia, serif;
+}
+.brand-variant-square .brand-icon {
   width: 36px;
   height: 36px;
   border-radius: 0;
@@ -398,7 +402,8 @@
     400 25px/1 Georgia,
     serif;
 }
-.brand-variant-seal .brand-title {
+.brand-variant-seal .brand-title,
+.brand-variant-square .brand-title {
   font-family: Georgia, serif;
   font-weight: 400;
 }
