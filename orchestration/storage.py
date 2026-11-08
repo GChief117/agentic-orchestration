@@ -124,6 +124,60 @@ class Store:
         )
         return project_id
 
+    def update_team(self, project_id, definition):
+        """Update idle-project agents by stable key; preserve IDs referenced by history.
+
+        Call inside the engine's transaction after checking pending work. Agents
+        with recorded tasks cannot be removed because receipts retain ownership.
+        """
+        existing = {agent["key"]: agent for agent in self.agents(project_id)}
+        desired = {agent.key for agent in definition.agents}
+        for key, agent in existing.items():
+            if (
+                key not in desired
+                and self.db.execute(
+                    "SELECT 1 FROM tasks WHERE agent_id=? LIMIT 1", (agent["id"],)
+                ).fetchone()
+            ):
+                raise ValueError(
+                    f"Cannot remove {agent['name']}: it has recorded tasks"
+                )
+        identifiers = {
+            agent.key: existing[agent.key]["id"]
+            if agent.key in existing
+            else uuid.uuid4().hex
+            for agent in definition.agents
+        }
+        for agent in definition.agents:
+            self.db.execute(
+                """INSERT INTO agents
+                (id,project_id,key,name,role,instructions,responsibilities,capabilities,reports_to,max_concurrency)
+                VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+                name=excluded.name,role=excluded.role,instructions=excluded.instructions,
+                responsibilities=excluded.responsibilities,capabilities=excluded.capabilities,
+                reports_to=excluded.reports_to,max_concurrency=excluded.max_concurrency""",
+                (
+                    identifiers[agent.key],
+                    project_id,
+                    agent.key,
+                    agent.name,
+                    agent.role,
+                    agent.instructions,
+                    json.dumps(agent.responsibilities),
+                    json.dumps(agent.capabilities),
+                    identifiers.get(agent.reports_to),
+                    agent.max_concurrency,
+                ),
+            )
+        for key, agent in existing.items():
+            if key not in desired:
+                self.db.execute("DELETE FROM agents WHERE id=?", (agent["id"],))
+        self.db.execute(
+            "UPDATE projects SET max_concurrency=? WHERE id=?",
+            (definition.max_concurrency, project_id),
+        )
+        self.event(None, f"Team updated: {definition.name}")
+
     def project(self, project_id):
         """Load a project and decode its charter, or raise ValueError for an unknown ID."""
         row = self.db.execute(

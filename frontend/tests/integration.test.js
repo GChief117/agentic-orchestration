@@ -91,7 +91,11 @@ test(
       .dispatchEvent(
         new dom.window.Event("submit", { bubbles: true, cancelable: true }),
       );
-    await until(() => document.querySelector("dialog [data-role]"));
+    await until(() =>
+      document.querySelector(
+        "dialog [data-organization-editor] [data-org-svg]",
+      ),
+    );
     document
       .querySelector("dialog form")
       .dispatchEvent(
@@ -144,6 +148,34 @@ test(
       document
         .querySelector("[data-receipt]")
         .textContent.includes(writer.receipt.sha256),
+    );
+    document.querySelector("dialog [data-close]").click();
+    document.querySelector('[data-tab="team"]').click();
+    document.querySelector('[data-action="edit-team"]').click();
+    const originalBuilder = app.snapshot.agents.find(
+      (agent) => agent.id === writer.agent_id,
+    );
+    document
+      .querySelector(`dialog [data-org-agent="${originalBuilder.key}"]`)
+      .dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+    assert.ok(
+      document.querySelector('dialog [data-chart-action="remove"]').disabled,
+    );
+    const name = document.querySelector('dialog [data-field="name"]');
+    name.value = "Lead builder";
+    name.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+    document
+      .querySelector("dialog form")
+      .dispatchEvent(
+        new dom.window.Event("submit", { bubbles: true, cancelable: true }),
+      );
+    await until(
+      () =>
+        !document.querySelector("dialog") &&
+        app.snapshot.agents.some(
+          (agent) =>
+            agent.id === originalBuilder.id && agent.name === "Lead builder",
+        ),
     );
     assert.equal(dom.window.localStorage.length, 0);
     assert.equal(dom.window.sessionStorage.length, 0);

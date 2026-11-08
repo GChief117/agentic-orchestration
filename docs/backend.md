@@ -64,6 +64,7 @@ The service writes a private bearer credential to `.runtime/api-token` with mode
 | GET | `/assets/...` | Allowlisted frontend modules and styles. |
 | POST | `/api/projects` | Body shaped like `examples/greenfield_project.json`; initializes a charter and assigned team. |
 | GET | `/api/projects` | Persistent project definitions and assigned agent records. |
+| POST | `/api/projects/{id}/team` | Replace an idle project’s roster and concurrency settings; keep existing agent IDs by key. |
 | POST | `/api/goals` | Body shaped like `examples/backend_goal.json`, plus `project_id`; returns the created goal ID. |
 | GET | `/api/state` | Projects, agents, goals, tasks, attempts, events, and execution capacity. |
 | POST | `/api/cancel` | `{ "id": "goal-id" }`; requests cancellation. |
@@ -93,3 +94,7 @@ Files live under `artifacts/projects/<project-id>/`. Identical relative filename
 - File operations defend ordinary path traversal and known symlink escapes. The local artifact directory must remain controlled by the service account; this is not a sandbox against a hostile process modifying paths concurrently.
 
 The larger [three-part design](architecture.md) remains a roadmap. Implemented behavior is limited to the operations and tests described here.
+
+## Organization edits
+
+`Engine.update_team` validates and atomically saves an idle project’s roster. Edits are rejected while tasks are queued, running, or cancelling. Existing agent IDs are preserved by project-local key; removing an agent with task history is rejected. New and unused agents can be added and removed, and reporting relationships must remain acyclic.

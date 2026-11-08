@@ -25,18 +25,17 @@ test("guided project editor hides keys, suggests roles, and preserves editable i
   assert.equal(dialog.querySelector('[data-field="key"]'), null);
   submit(dialog, dom.window);
   await tick();
-  assert.equal(dialog.querySelectorAll("[data-role]").length, 3);
   assert.equal(dialog.querySelectorAll(".org-card").length, 3);
-  const row = dialog.querySelectorAll("[data-agent]")[1];
-  row.querySelector('[data-field="instructions"]').value =
-    "Custom instructions for this project.";
-  const role = row.querySelector("[data-role]");
+  const builder = dialog.querySelector('[data-org-agent="agent-2"]');
+  builder.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  const instructions = dialog.querySelector('[data-field="instructions"]');
+  instructions.value = "Custom instructions for this project.";
+  instructions.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+  const role = dialog.querySelector('[data-agent-field="role_template"]');
   role.value = "writer";
   role.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
   assert.equal(
-    dialog
-      .querySelectorAll("[data-agent]")[1]
-      .querySelector('[data-field="instructions"]').value,
+    dialog.querySelector('[data-field="instructions"]').value,
     "Custom instructions for this project.",
   );
   submit(dialog, dom.window);

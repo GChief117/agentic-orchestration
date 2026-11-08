@@ -83,6 +83,13 @@ export class ApiClient {
   createProject(project) {
     return this.send("/api/projects", project);
   }
+  /** Save an idle project's edited roster while preserving stable agent ownership. */
+  updateTeam(projectId, team) {
+    return this.send(
+      `/api/projects/${encodeURIComponent(projectId)}/team`,
+      team,
+    );
+  }
   /**
    * Queue an explicitly assigned task graph in its project.
    * @param {object} goal Goal definition produced by goalPayload.

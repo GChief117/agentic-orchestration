@@ -1,3 +1,4 @@
+import { openTeamForm } from "./team-form.js";
 import { projectView } from "./domain.js";
 import { openGoalForm, openProjectForm, openTaskDetails } from "./forms.js";
 import { renderWorkspace } from "./views.js";
@@ -135,18 +136,48 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
       notify("Goal submitted. Eligible tasks can now run.");
     });
   }
+  /** Open chart editing for an idle project, optionally focused on a clicked role. */
+  function editTeam(selectedKey = null) {
+    const view = projectView(snapshot, selectedProject);
+    if (!view) return;
+    if (
+      view.tasks.some((task) =>
+        ["queued", "running", "cancelling"].includes(task.state),
+      )
+    ) {
+      showError(
+        new Error(
+          "Wait for queued and running project work to finish before editing the team.",
+        ),
+      );
+      return;
+    }
+    dialog = openTeamForm(
+      document,
+      view,
+      async (payload) => {
+        await api.updateTeam(view.project.id, payload);
+        await afterMutation();
+        notify("Team organization saved.");
+      },
+      selectedKey,
+    );
+  }
+
   /**
    * Delegate workspace button actions to navigation, editors, and API mutations.
    * @param {MouseEvent} event Click bubbling from a supported workspace control.
    */
   async function click(event) {
     const button = event.target.closest(
-      "[data-action], [data-project], [data-cancel], [data-inspect]",
+      "[data-action], [data-project], [data-cancel], [data-inspect], [data-org-agent]",
     );
     if (!button || !root.contains(button)) return;
     event.preventDefault();
     try {
-      if (button.dataset.project) {
+      if (button.dataset.orgAgent) {
+        editTeam(button.dataset.orgAgent);
+      } else if (button.dataset.project) {
         selectedProject = button.dataset.project;
         tab = "overview";
         render();
@@ -179,13 +210,23 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
         render();
       } else if (button.dataset.action === "new-project") createProject();
       else if (button.dataset.action === "new-goal") createGoal();
+      else if (button.dataset.action === "edit-team") editTeam();
       else if (button.dataset.action === "refresh") await refresh();
     } catch (error) {
       showError(error);
       if (button.isConnected) button.disabled = false;
     }
   }
+  /** Let keyboard users open the same editor from a focusable chart node. */
+  function chartKey(event) {
+    const node = event.target.closest("[data-org-agent]");
+    if (node && ["Enter", " "].includes(event.key)) {
+      event.preventDefault();
+      editTeam(node.dataset.orgAgent);
+    }
+  }
   root.addEventListener("click", click);
+  root.addEventListener("keydown", chartKey);
   root.innerHTML =
     '<main class="startup"><span class="eyebrow">Orchestration</span><h1>Opening your workspace…</h1><p>Loading projects, teams, and task state.</p></main>';
   const ready = refresh();
@@ -213,6 +254,7 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
       if (interval) window.clearInterval(interval);
       window.clearTimeout(notificationTimer);
       root.removeEventListener("click", click);
+      root.removeEventListener("keydown", chartKey);
       if (dialog?.isConnected) dialog.close();
     },
   };

@@ -1,136 +1,241 @@
-/* Shared reporting trees for project setup and saved team views. */
+/* Shared SVG organization canvas and chart-first roster inspector. */
 .organization-panel {
   margin-bottom: 24px;
 }
-.organization-chart {
-  overflow: auto;
-  padding: 24px 16px 30px;
-  text-align: center;
-}
-.org-owner {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 4px;
-  border: 1px dashed #c6d8c9;
-  border-radius: 9px;
-  padding: 11px 20px;
-  background: #f6f9f4;
-  min-width: 130px;
-}
-.org-owner span {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: #7f9582;
-}
-.org-owner strong {
-  font-size: 12px;
-  font-weight: 600;
-  color: #46694d;
-}
-.organization-chart ul {
-  padding: 26px 0 0;
-  display: flex;
-  justify-content: center;
-  list-style: none;
-  margin: 0;
-  position: relative;
-  min-width: max-content;
-}
-.organization-chart li {
-  position: relative;
-  padding: 23px 8px 0;
-  flex: 0 0 auto;
-}
-.organization-chart li::before,
-.organization-chart li::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  width: 50%;
-  height: 23px;
-  border-top: 1px solid #c9d8c9;
-}
-.organization-chart li::before {
-  right: 50%;
-}
-.organization-chart li::after {
-  left: 50%;
-  border-left: 1px solid #c9d8c9;
-}
-.organization-chart li:only-child::before,
-.organization-chart li:only-child::after {
-  border-top: 0;
-}
-.organization-chart li:first-child::before,
-.organization-chart li:last-child::after {
-  border-top: 0;
-}
-.organization-chart li:last-child::after {
-  border-left: 1px solid #c9d8c9;
-}
-.organization-chart ul::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 50%;
-  height: 26px;
-  border-left: 1px solid #c9d8c9;
-}
-.organization-chart ul > li {
-  margin-top: 0;
-}
-.org-card {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-  width: 124px;
-  padding: 14px 8px;
-  border: 1px solid #d5e2d3;
-  border-radius: 9px;
-  background: white;
-  color: #315339;
-  font: inherit;
-  vertical-align: top;
-  box-shadow: 0 3px 10px #233f2305;
-}
-.org-card strong {
-  font-size: 11px;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-}
-.org-card small {
-  font-size: 9px;
-  color: #829780;
-}
-.org-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: #ecf3e8;
-  display: grid;
-  place-items: center;
-  font-size: 11px;
-  color: #5b805b;
-  margin-bottom: 3px;
-}
-.org-working {
-  font-size: 9px;
-  color: #327958;
-  background: #eaf5e9;
-  padding: 3px 6px;
-  border-radius: 4px;
-}
-button.org-card:hover {
-  border-color: #7ea384;
-  background: #f8fcf5;
-}
-.organization-panel .organization-chart {
-  min-height: 230px;
-}
-
-/* Keep the reporting structure visible on the project overview. */
 .overview-organization {
   margin-top: 24px;
+}
+.organization-chart {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  background: #f8fbf5;
+  border-radius: 9px;
+}
+.organization-chart svg {
+  display: block;
+  width: 100%;
+  height: 430px;
+  touch-action: none;
+  user-select: none;
+}
+.organization-panel .organization-chart svg {
+  height: 360px;
+}
+.org-connectors path {
+  fill: none;
+  stroke: #aec3aa;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.org-node rect {
+  fill: #fff;
+  stroke: #cedec8;
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+.org-node circle {
+  fill: #edf4e6;
+}
+.org-node text {
+  text-anchor: middle;
+  pointer-events: none;
+  font-family: inherit;
+}
+.node-initial {
+  font-size: 11px;
+  fill: #5d7a53;
+  font-weight: 600;
+}
+.node-name {
+  font-size: 12px;
+  fill: #2c4c2c;
+  font-weight: 600;
+}
+.node-role {
+  font-size: 10px;
+  fill: #7e9475;
+}
+.owner-node rect {
+  fill: #f4f8ef;
+  stroke-dasharray: 5 4;
+}
+.owner-node .node-initial {
+  font-size: 9px;
+}
+.org-node[role="button"] {
+  cursor: pointer;
+}
+.org-node[role="button"]:hover rect {
+  stroke: #73955d;
+  fill: #fcfff7;
+}
+.org-node.selected rect {
+  stroke: #34703e;
+  stroke-width: 2.5;
+  fill: #f2f9eb;
+}
+.org-node:focus {
+  outline: none;
+}
+.org-node:focus rect {
+  stroke: #34703e;
+  stroke-width: 3;
+}
+.org-node.drop-target rect {
+  stroke: #207956;
+  stroke-width: 3;
+  fill: #e2f1d8;
+}
+.node-busy {
+  fill: #6caf70 !important;
+}
+.org-drag-link {
+  pointer-events: none;
+  fill: none;
+  stroke: #6a9b62;
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+}
+.organization-editor {
+  border: 1px solid #d8e5d0;
+  border-radius: 11px;
+  overflow: hidden;
+  background: #fff;
+}
+.chart-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 20px;
+  border-bottom: 1px solid #e2eadc;
+}
+.chart-toolbar strong {
+  font-size: 14px;
+  font-weight: 600;
+  display: block;
+}
+.chart-toolbar > div > span {
+  display: block;
+  font-size: 11px;
+  color: #788c6e;
+  margin-top: 5px;
+}
+.chart-add-controls {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+.chart-add-controls select {
+  min-width: 130px;
+}
+.chart-editor-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 295px;
+}
+.chart-workspace {
+  min-width: 0;
+  background: #f8fbf5;
+  padding: 16px;
+}
+.chart-workspace .organization-chart svg {
+  height: 460px;
+}
+.chart-view-controls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.chart-view-controls .button {
+  padding: 5px 9px;
+  min-height: 30px;
+  font-size: 11px;
+}
+.chart-view-controls span {
+  min-width: 44px;
+  text-align: center;
+  font-size: 10px;
+  color: #78926e;
+}
+.chart-message {
+  min-height: 16px;
+  font-size: 11px;
+  color: #627c56;
+  margin: 7px 0 16px;
+}
+.chart-capacity {
+  max-width: 320px;
+  margin: 0;
+}
+.node-inspector {
+  padding: 20px;
+  border-left: 1px solid #e1e9da;
+  background: #fff;
+  max-height: 720px;
+  overflow: auto;
+}
+.inspector-heading {
+  margin-bottom: 20px;
+}
+.inspector-heading h3 {
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+.node-inspector textarea {
+  font-size: 11px;
+  line-height: 1.8;
+}
+.node-inspector .text-button {
+  font-size: 10px;
+  margin: -6px 0 18px;
+}
+.node-inspector .agent-settings {
+  margin-bottom: 20px;
+}
+.inspector-empty h3 {
+  font-size: 17px;
+}
+.inspector-empty p {
+  font-size: 12px;
+  line-height: 1.9;
+  color: #7b8b70;
+}
+.team-organization-dialog,
+.guided-project-dialog {
+  width: min(1240px, calc(100vw - 36px));
+}
+@media (max-width: 850px) {
+  .chart-editor-body {
+    grid-template-columns: 1fr;
+  }
+  .node-inspector {
+    border-left: 0;
+    border-top: 1px solid #e1e9da;
+    max-height: none;
+  }
+  .chart-toolbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .chart-workspace .organization-chart svg {
+    height: 380px;
+  }
+  .organization-panel .organization-chart svg {
+    height: 300px;
+  }
+  .chart-add-controls {
+    width: 100%;
+  }
+  .chart-add-controls select {
+    flex: 1;
+  }
+  .chart-capacity {
+    max-width: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .org-node {
+    transition: none;
+  }
 }

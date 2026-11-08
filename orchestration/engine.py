@@ -60,6 +60,37 @@ class Engine:
                 project_id = self.store.create_project(definition)
         return project_id
 
+    def update_team(self, project_id, document):
+        """Persist chart edits for an idle project while preserving historical ownership.
+
+        Reject changes while work is queued/running and validate the full new
+        hierarchy and capability roster atomically before updating it.
+        """
+        if not isinstance(project_id, str) or not isinstance(document, dict):
+            raise ValueError("Project ID and team definition are required")
+        with self.lock:
+            self._require_open()
+            project = self.store.project(project_id)
+            if self.store.db.execute(
+                "SELECT 1 FROM tasks WHERE project_id=? AND state IN ('queued','running','cancelling') LIMIT 1",
+                (project_id,),
+            ).fetchone():
+                raise ValueError(
+                    "Wait for queued and running project work to finish before editing the team"
+                )
+            definition = parse_project(
+                {
+                    **project,
+                    "agents": document.get("agents"),
+                    "team_size": document.get("team_size"),
+                    "max_concurrency": document.get("max_concurrency"),
+                },
+                self.connection,
+            )
+            with self.store.db:
+                self.store.update_team(project_id, definition)
+        return project_id
+
     def submit(self, project_id, title, tasks):
         """Validate and atomically queue a goal in an existing project.
 

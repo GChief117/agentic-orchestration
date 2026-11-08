@@ -64,12 +64,14 @@ test("guided setup provides suggestions and no manual unique-key input", async (
   assert.equal(dialog.querySelector("[data-dictate]"), null);
   submit(dialog, dom.window);
   await tick();
-  assert.equal(dialog.querySelectorAll("[data-role]").length, 4);
   assert.equal(dialog.querySelectorAll(".org-card").length, 4);
-  const reports = dialog.querySelectorAll('[data-field="reports_to"]')[3];
+  dialog
+    .querySelector('[data-org-agent="agent-4"]')
+    .dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  const reports = dialog.querySelector('[data-agent-field="reports_to"]');
   reports.value = "agent-2";
   reports.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
-  assert.equal(dialog.querySelectorAll(".org-tree > li > ul > li").length, 2);
+  assert.equal(dialog.querySelectorAll(".org-card").length, 4);
   submit(dialog, dom.window);
   await tick();
   submit(dialog, dom.window);

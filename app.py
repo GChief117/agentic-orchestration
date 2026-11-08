@@ -53,6 +53,8 @@ STATIC_ASSETS = {
             "presets",
             "organization",
             "speech",
+            "organization-editor",
+            "team-form",
         )
     },
 }
@@ -194,7 +196,7 @@ def make_handler(engine, token):
             return data
 
         def do_POST(self):
-            """Validate and route project creation, goal submission, or cancellation.
+            """Validate and route project/team changes, goal submission, or cancellation.
 
             Input and permission errors become JSON 400 responses.
             """
@@ -210,6 +212,12 @@ def make_handler(engine, token):
                 if route == "/api/projects":
                     project_id = engine.create_project(data)
                     self.send(HTTPStatus.CREATED, {"id": project_id})
+                elif route.startswith("/api/projects/") and route.endswith("/team"):
+                    project_id = route.removeprefix("/api/projects/").removesuffix(
+                        "/team"
+                    )
+                    engine.update_team(project_id, data)
+                    self.send(HTTPStatus.OK, {"id": project_id})
                 elif route == "/api/goals":
                     goal_id = engine.submit(
                         data.get("project_id"), data.get("title"), data.get("tasks")

@@ -1,6 +1,6 @@
 /* Guided project intake, role suggestions, dictation, and review. */
 .guided-project-dialog {
-  width: min(1040px, calc(100vw - 36px));
+  width: min(1240px, calc(100vw - 36px));
 }
 .setup-progress {
   display: flex;
@@ -131,40 +131,6 @@
 .agent-settings[open] summary {
   margin-bottom: 18px;
 }
-.team-setup-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-  gap: 22px;
-  align-items: start;
-}
-.role-editors .form-section-heading {
-  margin: 0 0 16px;
-}
-.role-editor {
-  border: 1px solid #dee7d7;
-  border-radius: 9px;
-  padding: 17px;
-  margin: 0 0 18px;
-  min-width: 0;
-  background: #fcfdf9;
-}
-.role-editor-header {
-  display: flex;
-  gap: 10px;
-  align-items: start;
-}
-.role-editor-header > .field {
-  flex: 1;
-}
-.role-editor-header .icon-button {
-  font-size: 20px;
-}
-.instruction-preview {
-  font-size: 11px;
-  color: #8a9a7e;
-  line-height: 1.8;
-  margin: 0 0 18px;
-}
 .agent-settings {
   border-top: 1px solid #e5ecdf;
   padding-top: 14px;
@@ -172,25 +138,6 @@
 .agent-settings .text-button {
   margin: -8px 0 15px;
   font-size: 10px;
-}
-.team-chart-panel {
-  border: 1px solid #dee8d8;
-  border-radius: 10px;
-  background: #f9fcf5;
-  position: sticky;
-  top: 0;
-  min-width: 0;
-}
-.team-chart-panel > .panel-heading {
-  padding: 17px;
-}
-.team-chart-panel > .field {
-  margin: 0;
-  padding: 0 17px 18px;
-}
-.team-chart-panel .organization-chart {
-  padding-left: 10px;
-  padding-right: 10px;
 }
 .setup-review {
   display: grid;
@@ -217,7 +164,6 @@
   .preset-grid {
     grid-template-columns: 1fr 1fr;
   }
-  .team-setup-layout,
   .setup-review {
     grid-template-columns: 1fr;
   }
@@ -262,7 +208,6 @@
 /* Explanatory text remains readable on the light setup surface. */
 .step-intro p,
 .preset-card span,
-.instruction-preview,
 .voice-privacy,
 .speech-status {
   color: #637760;

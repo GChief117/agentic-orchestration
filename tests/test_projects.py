@@ -189,6 +189,49 @@ class ProjectTests(unittest.TestCase):
             [task["state"] for task in state["tasks"]], ["cancelled", "accepted"]
         )
 
+    def test_idle_team_updates_keep_agent_ids_and_reporting_history(self):
+        definition = project_definition()
+        project = self.engine.create_project(definition)
+        before = {
+            agent["key"]: agent["id"] for agent in self.engine.snapshot()["agents"]
+        }
+        definition["agents"][1]["name"] = "Lead builder"
+        definition["agents"][2]["reports_to"] = "builder"
+        self.engine.update_team(project, definition)
+        after = {agent["key"]: agent for agent in self.engine.snapshot()["agents"]}
+        self.assertEqual(after["builder"]["id"], before["builder"])
+        self.assertEqual(after["builder"]["name"], "Lead builder")
+        self.assertEqual(after["reviewer"]["reports_to"], before["builder"])
+
+    def test_team_edit_rejects_queued_work_and_historical_owner_removal(self):
+        definition = project_definition()
+        project = self.engine.create_project(definition)
+        self.engine.submit(project, "Work", [write_task()])
+        with self.assertRaisesRegex(ValueError, "queued and running"):
+            self.engine.update_team(project, definition)
+        self.complete(1)
+        definition["agents"] = [
+            agent for agent in definition["agents"] if agent["key"] != "builder"
+        ]
+        definition["team_size"] = 2
+        with self.assertRaisesRegex(ValueError, "recorded tasks"):
+            self.engine.update_team(project, definition)
+        self.assertEqual(len(self.engine.snapshot()["agents"]), 3)
+
+    def test_unused_agents_can_be_added_and_removed(self):
+        definition = project_definition()
+        project = self.engine.create_project(definition)
+        additional = copy.deepcopy(definition["agents"][1])
+        additional["key"] = "extra"
+        definition["agents"].append(additional)
+        definition["team_size"] = 4
+        self.engine.update_team(project, definition)
+        self.assertEqual(len(self.engine.snapshot()["agents"]), 4)
+        definition["agents"].pop()
+        definition["team_size"] = 3
+        self.engine.update_team(project, definition)
+        self.assertEqual(len(self.engine.snapshot()["agents"]), 3)
+
     def test_global_capacity_has_no_implicit_default(self):
         with self.assertRaises(TypeError):
             Engine(self.temp.name)
