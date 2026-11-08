@@ -59,7 +59,10 @@ function metricCards(snapshot) {
  */
 function projectCards(snapshot) {
   if (!snapshot.projects.length)
-    return `${empty("A place for your next project.", "Define a charter, assemble a team, and turn your goals into accountable work.")}<div class="empty-action"><button class="button primary" data-action="new-project">${icon("plus")} Create a project</button></div>`;
+    return empty(
+      "A place for your next project.",
+      "Define a charter, assemble a team, and turn your goals into accountable work.",
+    );
   return `<div class="project-grid">${snapshot.projects
     .map((project, index) => {
       const view = projectView(snapshot, project.id);
