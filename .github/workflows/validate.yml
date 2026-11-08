@@ -13,3 +13,11 @@ jobs:
       - run: python tools/validate_plan.py examples/multi_goal.json
       - run: python -m unittest discover -s tests -v
       - run: python tools/local_smoke.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --prefix frontend
+      - run: npm run check --prefix frontend
+      - run: npm test --prefix frontend

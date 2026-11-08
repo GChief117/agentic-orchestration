@@ -1,6 +1,6 @@
 # Backend implementation
 
-The repository includes a small working backend foundation. There is no frontend. It initializes greenfield projects with explicit charters and agent teams, runs assigned task graphs, persists their state, and performs bounded local file and terminal operations. It does not yet connect remote bridges, invoke model providers, or manage interactive agent sessions.
+The repository includes a small working backend foundation. A separate JavaScript frontend is served by the local application. It initializes greenfield projects with explicit charters and agent teams, runs assigned task graphs, persists their state, and performs bounded local file and terminal operations. It does not yet connect remote bridges, invoke model providers, or manage interactive agent sessions.
 
 ## Code responsibilities
 
@@ -56,10 +56,12 @@ For the JSON service:
 python3 app.py --port 8765 --execution-limit 4
 ```
 
-The service writes a private bearer credential to `.runtime/api-token` with mode `0600`, replacing it on restart. Clients provide it in `Authorization: Bearer …`. Do not commit this file or place the credential in a URL. All routes require the local credential; no dashboard is served.
+The service writes a private bearer credential to `.runtime/api-token` with mode `0600`, replacing it on restart. Clients provide it in `Authorization: Bearer …`. Do not commit this file or place the credential in a URL. API routes require the local credential. The local frontend shell bootstraps that credential into memory through its HTML response; it is not saved in browser storage. Static assets are served from an explicit allowlist.
 
 | Method | Route | Body or result |
 | --- | --- | --- |
+| GET | `/` | Local JavaScript workspace shell, with a per-run session credential. |
+| GET | `/assets/...` | Allowlisted frontend modules and styles. |
 | POST | `/api/projects` | Body shaped like `examples/greenfield_project.json`; initializes a charter and assigned team. |
 | GET | `/api/projects` | Persistent project definitions and assigned agent records. |
 | POST | `/api/goals` | Body shaped like `examples/backend_goal.json`, plus `project_id`; returns the created goal ID. |

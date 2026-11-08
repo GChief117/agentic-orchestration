@@ -2,6 +2,7 @@
 """Serve the backend JSON API: python3 app.py."""
 
 import argparse
+from html import escape
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -15,6 +16,18 @@ from orchestration.engine import Engine
 ROOT = Path(__file__).resolve().parent
 MAX_REQUEST_BYTES = 262144
 MAX_ARTIFACT_BYTES = 65536
+FRONTEND = ROOT / "frontend"
+STATIC_ASSETS = {
+    "/assets/styles.css": (FRONTEND / "styles.css", "text/css; charset=utf-8"),
+    "/assets/favicon.svg": (FRONTEND / "favicon.svg", "image/svg+xml"),
+    **{
+        f"/assets/{name}.js": (
+            FRONTEND / "src" / f"{name}.js",
+            "text/javascript; charset=utf-8",
+        )
+        for name in ("main", "app", "api", "domain", "views", "forms")
+    },
+}
 
 
 def make_handler(engine, token):
@@ -43,7 +56,7 @@ def make_handler(engine, token):
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header(
                 "Content-Security-Policy",
-                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                "default-src 'self'; script-src 'self'; style-src 'self'; "
                 "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
             )
             self.send_header("Content-Length", str(len(body)))
@@ -72,7 +85,21 @@ def make_handler(engine, token):
                 return
 
             route = urlparse(self.path).path
-            if not self.authorized():
+            if route == "/":
+                origin = self.headers.get("Origin")
+                if origin and origin != self.origin:
+                    self.send(HTTPStatus.FORBIDDEN, {"error": "Invalid origin"})
+                    return
+                page = (
+                    (FRONTEND / "index.html")
+                    .read_text()
+                    .replace("__ORCHESTRATION_SESSION__", escape(token, quote=True))
+                )
+                self.send(HTTPStatus.OK, page.encode(), "text/html; charset=utf-8")
+            elif route in STATIC_ASSETS:
+                path, content_type = STATIC_ASSETS[route]
+                self.send(HTTPStatus.OK, path.read_bytes(), content_type)
+            elif not self.authorized():
                 self.send(
                     HTTPStatus.FORBIDDEN,
                     {"error": "Local session authorization required"},

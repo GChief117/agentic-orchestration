@@ -359,9 +359,25 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(error.exception.code, 400)
         error.exception.close()
 
-    def test_no_dashboard_is_served(self):
+    def test_frontend_shell_and_assets_are_served(self):
+        with self.request("/") as result:
+            page = result.read().decode()
+            self.assertIn('name="orchestration-session" content="test-session"', page)
+            self.assertNotIn("__ORCHESTRATION_SESSION__", page)
+            self.assertIn("no-store", result.headers["Cache-Control"])
+        with self.request("/assets/app.js") as result:
+            self.assertIn("javascript", result.headers["Content-Type"])
+            self.assertIn(b"mountApp", result.read())
+
+    def test_frontend_rejects_cross_origin_bootstrap(self):
         with self.assertRaises(HTTPError) as error:
-            self.request("/")
+            self.request("/", headers={"Origin": "https://example.com"})
+        self.assertEqual(error.exception.code, 403)
+        error.exception.close()
+
+    def test_static_routes_do_not_expose_arbitrary_files(self):
+        with self.assertRaises(HTTPError) as error:
+            self.request("/assets/../app.py")
         self.assertEqual(error.exception.code, 404)
         error.exception.close()
 

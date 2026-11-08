@@ -16,7 +16,7 @@
 
 ## Working backend foundation
 
-- [x] Backend-only command line and authenticated JSON API.
+- [x] Command line and authenticated JSON API.
 - [x] Separate plan validation, persistence, scheduling, execution, and connection modules.
 - [x] Explicit task graphs, persistent attempts, cancellation, and restart handling.
 - [x] Canonical resource coordination and local file/terminal operations.
@@ -46,3 +46,10 @@
 - [ ] Establish broader maintainership and a documented decision process.
 
 No delivery dates or production guarantees are implied.
+
+## JavaScript workspace
+
+- [x] Separate frontend modules, styling, and API client.
+- [x] Project charter and configurable team forms.
+- [x] Assigned task creation, dependency checks, and execution evidence.
+- [x] Cancellation, live state refresh, and browserless frontend/API integration tests.

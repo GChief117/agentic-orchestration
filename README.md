@@ -17,7 +17,18 @@ python3 -m orchestration examples/backend_goal.json --project examples/greenfiel
 python3 app.py --port 8765 --execution-limit 4
 ```
 
-The first command runs an explicit task graph and prints its result. The second starts an authenticated JSON API. There is no frontend. The backend initializes projects with charters and assigned agent teams, and persists goals, tasks, attempts, and receipts, enforces dependencies and resource conflicts, and executes bounded local operations. Remote bridges and AI-provider sessions are not connected yet. See the [backend implementation](docs/backend.md) for the module map, request flow, API, and limitations.
+The first command runs an explicit task graph and prints its result. The second starts the JavaScript project workspace and its authenticated JSON API at `http://127.0.0.1:8765`. The backend initializes projects with charters and assigned agent teams, and persists goals, tasks, attempts, and receipts, enforces dependencies and resource conflicts, and executes bounded local operations. Remote bridges and AI-provider sessions are not connected yet. See the [backend implementation](docs/backend.md) for the module map, request flow, API, and limitations.
+
+## JavaScript frontend
+
+The frontend lives separately in [`frontend/`](frontend/README.md) and uses plain JavaScript modules and CSS. It supports project charters, editable agent rosters, goal and dependency creation, task inspection, artifacts, cancellation, and live state refresh. It connects to the same local backend; no bundler or JavaScript runtime is required to serve it.
+
+For development checks:
+
+```sh
+npm ci --prefix frontend
+npm test --prefix frontend
+```
 
 ## Three parts, one repository
 
