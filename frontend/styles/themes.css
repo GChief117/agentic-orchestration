@@ -226,34 +226,90 @@
   background: #423a29;
 }
 
-/* Warm typography is independent of its palette and component geometry. */
-:root[data-theme="warm"][data-warm-typography="clean"] h1,
-:root[data-theme="warm"][data-warm-typography="clean"] h2 {
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+/* Serif heading samples retain the same body font for an even comparison. */
+[data-warm-typography],
+[data-warm-type] {
+  --warm-body: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
-:root[data-theme="warm"][data-warm-typography="soft"] {
-  font-family: "Avenir Next", Avenir, "Trebuchet MS", sans-serif;
+[data-warm-typography="editorial"],
+[data-warm-type="editorial"] {
+  --warm-heading: Georgia, "Times New Roman", serif;
 }
-:root[data-theme="warm"][data-warm-typography="soft"] h1,
-:root[data-theme="warm"][data-warm-typography="soft"] h2 {
-  font-family: inherit;
+[data-warm-typography="iowan"],
+[data-warm-type="iowan"] {
+  --warm-heading: "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+}
+[data-warm-typography="baskerville"],
+[data-warm-type="baskerville"] {
+  --warm-heading: Baskerville, "Baskerville Old Face", Georgia, serif;
+}
+[data-warm-typography="literary"],
+[data-warm-type="literary"] {
+  --warm-heading: "Palatino Linotype", Palatino, "Book Antiqua", serif;
+}
+[data-warm-typography="didot"],
+[data-warm-type="didot"] {
+  --warm-heading: Didot, "Bodoni MT", Georgia, serif;
+}
+[data-warm-typography="times"],
+[data-warm-type="times"] {
+  --warm-heading: Times, "Times New Roman", serif;
+}
+:root[data-theme="warm"][data-warm-typography] {
+  font-family: var(--warm-body);
+}
+:root[data-theme="warm"][data-warm-typography] h1,
+:root[data-theme="warm"][data-warm-typography] h2 {
+  font-family: var(--warm-heading);
 }
 .warm-typography {
   margin-top: 24px;
 }
-.typography-sample {
-  padding: 18px;
+.typography-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.typography-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 22px;
+  text-align: left;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--surface);
+  color: var(--ink);
+  font-family: var(--warm-body);
+  min-width: 0;
 }
-.typography-sample p {
-  margin-bottom: 0;
+.typography-option[aria-pressed="true"] {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+.typography-label {
+  font:
+    11px/1.5 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
   color: var(--muted);
+}
+.typography-preview-title {
+  font-family: var(--warm-heading);
+  font-size: 25px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.typography-preview-body {
+  font-family: var(--warm-body);
+  font-size: 13px;
   line-height: 1.7;
+  color: var(--muted);
+}
+@media (max-width: 600px) {
+  .typography-options {
+    grid-template-columns: 1fr;
+  }
 }

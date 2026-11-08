@@ -26,7 +26,11 @@ test("appearance options apply immediately, persist only the theme, and restore 
         document.querySelector("#app").textContent,
         "Existing project",
       );
-      assert.equal(dialog.querySelectorAll('[aria-pressed="true"]').length, 1);
+      assert.equal(
+        dialog.querySelectorAll('[data-appearance][aria-pressed="true"]')
+          .length,
+        1,
+      );
     }
     assert.equal(
       dialog.querySelectorAll("[style]").length,
@@ -64,17 +68,34 @@ test("warm typography changes independently and survives a reload", () => {
     applyAppearance(document, "warm");
     const dialog = openAppearanceForm(document);
     assert.equal(dialog.querySelector("[data-warm-type-panel]").hidden, false);
-    const select = dialog.querySelector("[data-warm-type]");
-    for (const style of ["clean", "soft", "editorial"]) {
-      select.value = style;
-      select.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+    assert.equal(dialog.querySelectorAll("[data-warm-type]").length, 6);
+    assert.equal(
+      dialog.querySelectorAll(".typography-preview-title").length,
+      6,
+    );
+    for (const style of [
+      "editorial",
+      "iowan",
+      "baskerville",
+      "literary",
+      "didot",
+      "times",
+    ]) {
+      dialog.querySelector(`[data-warm-type="${style}"]`).click();
+      assert.equal(
+        dialog.querySelectorAll('[data-warm-type][aria-pressed="true"]').length,
+        1,
+      );
       assert.equal(document.documentElement.dataset.warmTypography, style);
       assert.equal(document.documentElement.dataset.theme, "warm");
     }
-    applyWarmTypography(document, "clean");
+    applyWarmTypography(document, "baskerville");
     delete document.documentElement.dataset.warmTypography;
     initializeAppearance(document);
-    assert.equal(document.documentElement.dataset.warmTypography, "clean");
+    assert.equal(
+      document.documentElement.dataset.warmTypography,
+      "baskerville",
+    );
     assert.equal(document.documentElement.dataset.theme, "warm");
     assert.equal(
       document.querySelector("#app").textContent,

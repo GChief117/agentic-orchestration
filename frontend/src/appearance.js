@@ -20,9 +20,12 @@ export const APPEARANCES = {
 };
 
 export const WARM_TYPOGRAPHY = {
-  editorial: "Editorial serif headings",
-  clean: "Clean sans-serif",
-  soft: "Soft sans-serif",
+  editorial: "Georgia · Familiar and sturdy",
+  iowan: "Iowan Old Style · Open and literary",
+  baskerville: "Baskerville · Classic and refined",
+  literary: "Palatino · Warm and spacious",
+  didot: "Didot · Sharp and elegant",
+  times: "Times · Compact and traditional",
 };
 
 /** Change only Warm minimal's type family, retaining its colors and surfaces. */
@@ -98,20 +101,26 @@ export function openAppearanceForm(document) {
     )
     .join(
       "",
-    )}</div><div class="warm-typography" data-warm-type-panel hidden><label class="field"><span>Warm minimal typography</span><select data-warm-type aria-label="Warm minimal typography">${Object.entries(
+    )} </div><div class="warm-typography" data-warm-type-panel hidden><h3>Compare editorial serif headings</h3><p>Six heading styles with the same body font and warm palette. Click a sample to apply it.</p><div class="typography-options">${Object.entries(
     WARM_TYPOGRAPHY,
   )
-    .map(([key, label]) => `<option value="${key}">${label}</option>`)
-    .join(
-      "",
-    )}</select></label><div class="typography-sample"><h2>A clear plan, a focused team.</h2><p>Organize projects, coordinate your agents, and follow the work as it happens.</p></div></div><p data-appearance-status role="status"></p></div>`;
+    .map(
+      ([key, label]) =>
+        `<button type="button" class="typography-option" data-warm-type="${key}" aria-pressed="false"><span class="typography-label">${label}</span><span class="typography-preview-title">A clear plan.<br>A focused team.</span><span class="typography-preview-body">Plan, build, review.<br>Projects 12 · Agents 06</span></button>`,
+    )
+    .join("")}</div></div><p data-appearance-status role="status"></p></div>`;
   /** Reflect the selected palette without recreating controls or losing focus. */
   function update() {
     const selected = document.documentElement.dataset.theme || "original";
     content.querySelector("[data-warm-type-panel]").hidden =
       selected !== "warm";
-    content.querySelector("[data-warm-type]").value =
+    const typography =
       document.documentElement.dataset.warmTypography || "editorial";
+    for (const button of content.querySelectorAll("[data-warm-type]"))
+      button.setAttribute(
+        "aria-pressed",
+        String(button.dataset.warmType === typography),
+      );
     for (const button of content.querySelectorAll("[data-appearance]"))
       button.setAttribute(
         "aria-pressed",
@@ -121,17 +130,17 @@ export function openAppearanceForm(document) {
       `${APPEARANCES[selected].name} applied. Close this panel to explore the app.`;
   }
   content.addEventListener("click", (event) => {
+    const font = event.target.closest("[data-warm-type]");
+    if (font) {
+      applyWarmTypography(document, font.dataset.warmType);
+      update();
+      return;
+    }
     const button = event.target.closest("[data-appearance]");
     if (!button) return;
     applyAppearance(document, button.dataset.appearance);
     update();
   });
-  content
-    .querySelector("[data-warm-type]")
-    .addEventListener("change", (event) => {
-      applyWarmTypography(document, event.target.value);
-      update();
-    });
   update();
   return dialog;
 }
