@@ -43,9 +43,12 @@ Python 3.10+ on macOS or Linux; no runtime dependencies outside the standard lib
 ```sh
 python3 -m orchestration examples/backend_goal.json --project examples/greenfield_project.json --execution-limit 4 --data-dir .runtime/example
 python3 -m unittest discover -s tests -v
+python3 tools/local_smoke.py
 ```
 
-The command returns JSON with goals, tasks, attempts, events, and receipts. Outputs remain under the selected directory's `artifacts/` folder. Using `--project` creates a new project and goal on each run; use `--project-id ID` to submit another goal to an existing team. Submission deduplication is not implemented.
+The smoke test starts a real local API process, creates two projects with different team sizes, checks task execution and capacity against recorded intervals, verifies artifacts, and restarts the service to verify persistence. It saves a report under `.runtime/local-smoke-*/report.json` and stops its own process afterward. It uses the implemented local adapters; it does not test model providers or remote bridges.
+
+The plan command returns JSON with goals, tasks, attempts, events, and receipts. Outputs remain under the selected directory's `artifacts/` folder. Using `--project` creates a new project and goal on each run; use `--project-id ID` to submit another goal to an existing team. Submission deduplication is not implemented.
 
 For the JSON service:
 
