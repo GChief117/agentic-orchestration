@@ -145,3 +145,84 @@ test("large configured capacity does not create an unbounded dropdown", (t) => {
     root.querySelectorAll("[data-project-concurrency] option").length <= 10,
   );
 });
+
+test("physical card clicks select the correct agent even when pointerup targets the SVG", (t) => {
+  const dom = new JSDOM('<div id="editor"></div>');
+  t.after(() => dom.window.close());
+  const root = dom.window.document.querySelector("#editor");
+  const editor = mountOrganizationEditor({
+    root,
+    agents: guidedDraft().agents,
+    maxConcurrency: 2,
+  });
+  t.after(() => editor.destroy());
+
+  for (const [key, name] of [
+    ["agent-2", "Builder"],
+    ["agent-3", "Reviewer"],
+  ]) {
+    const svg = root.querySelector("[data-org-svg]");
+    let captures = 0;
+    svg.setPointerCapture = () => {
+      captures += 1;
+    };
+    const card = root.querySelector(`[data-org-agent="${key}"]`);
+    pointer(dom.window, card.querySelector("rect"), "pointerdown", 10, 10);
+    pointer(dom.window, svg, "pointermove", 12, 11);
+    assert.equal(
+      captures,
+      0,
+      "small click movements must not capture the pointer",
+    );
+    pointer(dom.window, svg, "pointerup", 12, 11);
+    assert.equal(root.querySelector(".inspector-heading h3").textContent, name);
+    assert.equal(root.querySelector('[data-field="name"]').value, name);
+    assert.ok(
+      root
+        .querySelector(`[data-org-agent="${key}"]`)
+        .classList.contains("selected"),
+    );
+  }
+
+  const instructions = root.querySelector('[data-field="instructions"]');
+  instructions.value = "Review this project's outputs independently.";
+  instructions.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+  assert.equal(
+    editor.snapshot().agents.find((agent) => agent.key === "agent-3")
+      .instructions,
+    instructions.value,
+  );
+  assert.notEqual(
+    editor.snapshot().agents.find((agent) => agent.key === "agent-2")
+      .instructions,
+    instructions.value,
+  );
+});
+
+test("pointer capture starts only after a drag crosses the movement threshold", (t) => {
+  const dom = new JSDOM('<div id="editor"></div>');
+  t.after(() => dom.window.close());
+  const root = dom.window.document.querySelector("#editor");
+  const editor = mountOrganizationEditor({
+    root,
+    agents: guidedDraft().agents,
+    maxConcurrency: 2,
+  });
+  t.after(() => editor.destroy());
+  const svg = root.querySelector("svg");
+  let captures = 0;
+  svg.setPointerCapture = () => {
+    captures += 1;
+  };
+  pointer(
+    dom.window,
+    root.querySelector('[data-org-agent="agent-2"]'),
+    "pointerdown",
+    0,
+    0,
+  );
+  assert.equal(captures, 0);
+  pointer(dom.window, svg, "pointermove", 20, 20);
+  assert.equal(captures, 1);
+  pointer(dom.window, svg, "pointercancel", 20, 20);
+});

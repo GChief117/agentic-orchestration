@@ -316,13 +316,13 @@ export function mountOrganizationEditor({
     gesture = {
       svg,
       node: node === "__owner__" ? null : node,
+      pressedNode: node,
       startX: event.clientX,
       startY: event.clientY,
       last: point(event, svg),
       moved: false,
       candidate: null,
     };
-    svg.setPointerCapture?.(event.pointerId);
   }
   /** Preview a valid drop target, or shift the viewBox when dragging the background. */
   function pointerMove(event) {
@@ -335,6 +335,10 @@ export function mountOrganizationEditor({
       !gesture.moved
     )
       return;
+    if (!gesture.moved) {
+      // Capture only real drags. Early capture retargets card clicks to the SVG.
+      gesture.svg.setPointerCapture?.(event.pointerId);
+    }
     gesture.moved = true;
     event.preventDefault();
     if (!gesture.node) {
@@ -403,6 +407,12 @@ export function mountOrganizationEditor({
           : null;
     }
     gesture = null;
+    if (!ended.moved && ended.pressedNode) {
+      // Use the pressed card even if a browser retargets pointerup to the canvas.
+      selected = ended.pressedNode;
+      render();
+      return;
+    }
     ignoreClick = ended.moved;
     if (ended.moved)
       document.defaultView.setTimeout(() => {
