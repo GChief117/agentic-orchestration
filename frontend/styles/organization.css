@@ -1,0 +1,136 @@
+/* Shared reporting trees for project setup and saved team views. */
+.organization-panel {
+  margin-bottom: 24px;
+}
+.organization-chart {
+  overflow: auto;
+  padding: 24px 16px 30px;
+  text-align: center;
+}
+.org-owner {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px dashed #c6d8c9;
+  border-radius: 9px;
+  padding: 11px 20px;
+  background: #f6f9f4;
+  min-width: 130px;
+}
+.org-owner span {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7f9582;
+}
+.org-owner strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: #46694d;
+}
+.organization-chart ul {
+  padding: 26px 0 0;
+  display: flex;
+  justify-content: center;
+  list-style: none;
+  margin: 0;
+  position: relative;
+  min-width: max-content;
+}
+.organization-chart li {
+  position: relative;
+  padding: 23px 8px 0;
+  flex: 0 0 auto;
+}
+.organization-chart li::before,
+.organization-chart li::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 50%;
+  height: 23px;
+  border-top: 1px solid #c9d8c9;
+}
+.organization-chart li::before {
+  right: 50%;
+}
+.organization-chart li::after {
+  left: 50%;
+  border-left: 1px solid #c9d8c9;
+}
+.organization-chart li:only-child::before,
+.organization-chart li:only-child::after {
+  border-top: 0;
+}
+.organization-chart li:first-child::before,
+.organization-chart li:last-child::after {
+  border-top: 0;
+}
+.organization-chart li:last-child::after {
+  border-left: 1px solid #c9d8c9;
+}
+.organization-chart ul::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: 26px;
+  border-left: 1px solid #c9d8c9;
+}
+.organization-chart ul > li {
+  margin-top: 0;
+}
+.org-card {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  width: 124px;
+  padding: 14px 8px;
+  border: 1px solid #d5e2d3;
+  border-radius: 9px;
+  background: white;
+  color: #315339;
+  font: inherit;
+  vertical-align: top;
+  box-shadow: 0 3px 10px #233f2305;
+}
+.org-card strong {
+  font-size: 11px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.org-card small {
+  font-size: 9px;
+  color: #829780;
+}
+.org-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #ecf3e8;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  color: #5b805b;
+  margin-bottom: 3px;
+}
+.org-working {
+  font-size: 9px;
+  color: #327958;
+  background: #eaf5e9;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+button.org-card:hover {
+  border-color: #7ea384;
+  background: #f8fcf5;
+}
+.organization-panel .organization-chart {
+  min-height: 230px;
+}
+
+/* Keep the reporting structure visible on the project overview. */
+.overview-organization {
+  margin-top: 24px;
+}

@@ -91,6 +91,18 @@ test(
       .dispatchEvent(
         new dom.window.Event("submit", { bubbles: true, cancelable: true }),
       );
+    await until(() => document.querySelector("dialog [data-role]"));
+    document
+      .querySelector("dialog form")
+      .dispatchEvent(
+        new dom.window.Event("submit", { bubbles: true, cancelable: true }),
+      );
+    await until(() => document.querySelector("dialog .setup-review"));
+    document
+      .querySelector("dialog form")
+      .dispatchEvent(
+        new dom.window.Event("submit", { bubbles: true, cancelable: true }),
+      );
     await until(
       () =>
         app.snapshot.projects.length === 1 && !document.querySelector("dialog"),
@@ -99,6 +111,10 @@ test(
     assert.equal(app.snapshot.projects[0].name, "Frontend integration project");
     document.querySelector('[data-tab="team"]').click();
     assert.equal(document.querySelectorAll(".agent-card").length, 3);
+    assert.equal(
+      document.querySelectorAll(".organization-panel .org-card").length,
+      3,
+    );
     document.querySelector('[data-action="new-goal"]').click();
     document.querySelector("dialog [data-example]").click();
     document

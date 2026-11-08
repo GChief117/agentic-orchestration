@@ -213,7 +213,7 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
       if (interval) window.clearInterval(interval);
       window.clearTimeout(notificationTimer);
       root.removeEventListener("click", click);
-      if (dialog?.isConnected) dialog.remove();
+      if (dialog?.isConnected) dialog.close();
     },
   };
 }

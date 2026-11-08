@@ -14,7 +14,7 @@ function submit(dialog, window) {
     );
 }
 
-test("project editor submits a roster and can display client-side validation", async (t) => {
+test("guided project editor hides keys, suggests roles, and preserves editable instructions", async (t) => {
   const dom = new JSDOM("<!doctype html><body></body>");
   t.after(() => dom.window.close());
   let result;
@@ -22,19 +22,36 @@ test("project editor submits a roster and can display client-side validation", a
     result = payload;
   });
   dialog.querySelector("[data-example]").click();
-  dialog.querySelector('[data-field="max_concurrency"]').value = "99";
+  assert.equal(dialog.querySelector('[data-field="key"]'), null);
   submit(dialog, dom.window);
   await tick();
-  assert.match(
-    dialog.querySelector("[data-error]").textContent,
-    /combined capacity/,
+  assert.equal(dialog.querySelectorAll("[data-role]").length, 3);
+  assert.equal(dialog.querySelectorAll(".org-card").length, 3);
+  const row = dialog.querySelectorAll("[data-agent]")[1];
+  row.querySelector('[data-field="instructions"]').value =
+    "Custom instructions for this project.";
+  const role = row.querySelector("[data-role]");
+  role.value = "writer";
+  role.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  assert.equal(
+    dialog
+      .querySelectorAll("[data-agent]")[1]
+      .querySelector('[data-field="instructions"]').value,
+    "Custom instructions for this project.",
   );
+  submit(dialog, dom.window);
+  await tick();
+  assert.ok(dialog.querySelector(".setup-review"));
   assert.equal(result, undefined);
-  dialog.querySelector('[data-field="max_concurrency"]').value = "2";
   submit(dialog, dom.window);
   await tick();
   assert.equal(result.team_size, 3);
-  assert.equal(result.agents[1].role, "Implementation");
+  assert.equal(result.agents[1].role, "Writing");
+  assert.equal(
+    result.agents[1].instructions,
+    "Custom instructions for this project.",
+  );
+  assert.equal(new Set(result.agents.map((agent) => agent.key)).size, 3);
 });
 
 test("goal editor restricts actions to the selected actor and submits dependency choices", async (t) => {
@@ -105,11 +122,15 @@ test("pending submissions disable editors and cannot be submitted twice", async 
   });
   dialog.querySelector("[data-example]").click();
   submit(dialog, dom.window);
+  await tick();
+  submit(dialog, dom.window);
+  await tick();
+  submit(dialog, dom.window);
   submit(dialog, dom.window);
   await tick();
   assert.equal(calls, 1);
-  assert.ok(dialog.querySelector("[data-add-agent]").disabled);
-  assert.ok(dialog.querySelector('[data-field="name"]').disabled);
+  assert.ok(dialog.querySelector('[type="submit"]').disabled);
+  assert.ok(dialog.querySelector("[data-back]").disabled);
   finish();
   await tick();
   assert.equal(dialog.isConnected, false);

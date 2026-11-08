@@ -370,7 +370,16 @@ class HTTPTests(unittest.TestCase):
             self.assertIn(b"mountApp", result.read())
 
     def test_css_modules_are_available_with_css_content_type(self):
-        for name in ("base", "layout", "projects", "work", "forms", "responsive"):
+        for name in (
+            "base",
+            "layout",
+            "projects",
+            "work",
+            "forms",
+            "organization",
+            "project-setup",
+            "responsive",
+        ):
             with self.subTest(name=name), self.request(
                 f"/assets/styles/{name}.css"
             ) as response:

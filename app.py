@@ -23,7 +23,16 @@ STATIC_ASSETS = {
             FRONTEND / "styles" / f"{name}.css",
             "text/css; charset=utf-8",
         )
-        for name in ("base", "layout", "projects", "work", "forms", "responsive")
+        for name in (
+            "base",
+            "layout",
+            "projects",
+            "work",
+            "forms",
+            "organization",
+            "project-setup",
+            "responsive",
+        )
     },
     "/assets/styles.css": (FRONTEND / "styles.css", "text/css; charset=utf-8"),
     "/assets/favicon.svg": (FRONTEND / "favicon.svg", "image/svg+xml"),
@@ -32,7 +41,19 @@ STATIC_ASSETS = {
             FRONTEND / "src" / f"{name}.js",
             "text/javascript; charset=utf-8",
         )
-        for name in ("main", "app", "api", "domain", "views", "forms")
+        for name in (
+            "main",
+            "app",
+            "api",
+            "domain",
+            "views",
+            "forms",
+            "form-controls",
+            "project-form",
+            "presets",
+            "organization",
+            "speech",
+        )
     },
 }
 

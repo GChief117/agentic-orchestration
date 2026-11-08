@@ -1,0 +1,269 @@
+/* Guided project intake, role suggestions, dictation, and review. */
+.guided-project-dialog {
+  width: min(1040px, calc(100vw - 36px));
+}
+.setup-progress {
+  display: flex;
+  gap: 0;
+  padding: 20px 28px 0;
+}
+.setup-progress button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 0;
+  border-bottom: 2px solid #e5ebe2;
+  background: none;
+  padding: 10px;
+  color: #96a28e;
+  font-size: 12px;
+}
+.setup-progress button span {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #f0f4ed;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+}
+.setup-progress .current {
+  color: #2e6945;
+  border-color: #49885d;
+  font-weight: 600;
+}
+.setup-progress .current span {
+  background: #e0eed9;
+  color: #3a7347;
+}
+.setup-progress .complete {
+  color: #638466;
+}
+.setup-progress button:disabled {
+  cursor: default;
+  opacity: 1;
+}
+.step-intro {
+  margin: 0 0 23px;
+}
+.step-intro h3 {
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.6px;
+}
+.step-intro p {
+  font-size: 12px;
+  color: #84937c;
+  line-height: 1.7;
+  margin: 8px 0 0;
+}
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 26px;
+}
+.preset-card {
+  border: 1px solid #dce6d5;
+  background: #fff;
+  border-radius: 8px;
+  padding: 15px;
+  text-align: left;
+  color: #526c4b;
+}
+.preset-card strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.preset-card span {
+  display: block;
+  font-size: 10px;
+  line-height: 1.6;
+  color: #8e9d85;
+}
+.preset-card.chosen {
+  background: #f0f7e9;
+  border-color: #8aab79;
+  box-shadow: 0 0 0 1px #8aab7910;
+}
+.voice-field {
+  position: relative;
+  margin-bottom: 20px;
+}
+.voice-field textarea {
+  min-height: 120px;
+  font-size: 15px;
+  line-height: 1.8;
+  padding: 15px;
+}
+.dictate-button {
+  margin-top: -8px;
+  font-size: 11px;
+}
+.voice-privacy,
+.speech-status {
+  font-size: 10px;
+  color: #82977d;
+  line-height: 1.6;
+}
+.speech-status:not(:empty) {
+  background: #f1f6eb;
+  padding: 9px 12px;
+  border-radius: 5px;
+}
+.advanced-settings {
+  border: 1px solid #e0e8da;
+  border-radius: 8px;
+  padding: 15px;
+  margin-top: 10px;
+}
+.advanced-settings summary,
+.agent-settings summary {
+  font-size: 12px;
+  color: #6a8560;
+  cursor: pointer;
+}
+.advanced-settings[open] summary,
+.agent-settings[open] summary {
+  margin-bottom: 18px;
+}
+.team-setup-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+.role-editors .form-section-heading {
+  margin: 0 0 16px;
+}
+.role-editor {
+  border: 1px solid #dee7d7;
+  border-radius: 9px;
+  padding: 17px;
+  margin: 0 0 18px;
+  min-width: 0;
+  background: #fcfdf9;
+}
+.role-editor-header {
+  display: flex;
+  gap: 10px;
+  align-items: start;
+}
+.role-editor-header > .field {
+  flex: 1;
+}
+.role-editor-header .icon-button {
+  font-size: 20px;
+}
+.instruction-preview {
+  font-size: 11px;
+  color: #8a9a7e;
+  line-height: 1.8;
+  margin: 0 0 18px;
+}
+.agent-settings {
+  border-top: 1px solid #e5ecdf;
+  padding-top: 14px;
+}
+.agent-settings .text-button {
+  margin: -8px 0 15px;
+  font-size: 10px;
+}
+.team-chart-panel {
+  border: 1px solid #dee8d8;
+  border-radius: 10px;
+  background: #f9fcf5;
+  position: sticky;
+  top: 0;
+  min-width: 0;
+}
+.team-chart-panel > .panel-heading {
+  padding: 17px;
+}
+.team-chart-panel > .field {
+  margin: 0;
+  padding: 0 17px 18px;
+}
+.team-chart-panel .organization-chart {
+  padding-left: 10px;
+  padding-right: 10px;
+}
+.setup-review {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  margin-bottom: 26px;
+}
+.review-objective {
+  font-size: 17px;
+  line-height: 1.8;
+  margin: 0 0 24px;
+}
+.setup-review ul {
+  font-size: 12px;
+  line-height: 1.9;
+  color: #819176;
+  padding-left: 18px;
+  margin: 0 0 22px;
+}
+.setup-review > .organization-chart {
+  min-width: 0;
+}
+@media (max-width: 800px) {
+  .preset-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .team-setup-layout,
+  .setup-review {
+    grid-template-columns: 1fr;
+  }
+  .team-chart-panel {
+    position: static;
+    grid-row: 1;
+  }
+  .setup-progress {
+    padding: 10px 16px 0;
+  }
+  .setup-progress button {
+    font-size: 10px;
+    gap: 5px;
+  }
+  .setup-progress button span {
+    width: 19px;
+    height: 19px;
+  }
+  .role-editor {
+    padding: 14px;
+  }
+  .step-intro h3 {
+    font-size: 20px;
+  }
+}
+@media (max-width: 480px) {
+  .preset-card {
+    padding: 12px;
+  }
+  .preset-card span {
+    font-size: 9px;
+  }
+  .org-card {
+    width: 112px;
+  }
+  .setup-progress {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+}
+
+/* Explanatory text remains readable on the light setup surface. */
+.step-intro p,
+.preset-card span,
+.instruction-preview,
+.voice-privacy,
+.speech-status {
+  color: #637760;
+}

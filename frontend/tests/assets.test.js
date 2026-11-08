@@ -12,9 +12,16 @@ test("CSS entry imports parseable local modules in cascade order", async () => {
   );
   assert.deepEqual(
     paths,
-    ["base", "layout", "projects", "work", "forms", "responsive"].map(
-      (name) => `./styles/${name}.css`,
-    ),
+    [
+      "base",
+      "layout",
+      "projects",
+      "work",
+      "forms",
+      "organization",
+      "project-setup",
+      "responsive",
+    ].map((name) => `./styles/${name}.css`),
   );
   const errors = [];
   const console = new VirtualConsole();

@@ -8,7 +8,9 @@ From the repository root:
 python3 app.py --execution-limit 4 --port 8765
 ```
 
-Open `http://127.0.0.1:8765`. Create a project, define its charter and agent roster, then create a goal with assigned tasks. The example buttons fill editable starter definitions; nothing executes until the form is submitted.
+Open `http://127.0.0.1:8765`. Create a project through three steps: describe the goal, choose the team, and review the organization chart. Project-type suggestions fill editable scope and success criteria. Role dropdowns fill editable instructions and permissions; internal keys are generated automatically. The chart updates with reporting relationships and also appears on the saved Team page. Nothing executes merely by creating a project.
+
+The optional Dictate button appears when the browser exposes a speech-recognition interface. Microphone access starts only after the user clicks it. Recognition is handled by the browser’s speech service; this app stores no audio. Unsupported browsers retain normal text entry and can use device keyboard dictation. Speech results remain editable before saving.
 
 Agent counts describe assigned team members. Active execution counts come from the backend. Model providers and remote execution adapters are still unconnected; the available actions are the backend's real local file and runtime operations.
 
@@ -16,7 +18,12 @@ Agent counts describe assigned team members. Active execution counts come from t
 
 - `src/api.js`: HTTP requests and session error handling.
 - `src/domain.js`: payload construction, client-side checks, starter definitions, and display data.
-- `src/forms.js`: project and goal editors and execution evidence.
+- `src/form-controls.js`: shared dialog and field controls.
+- `src/project-form.js`: guided project setup and editable team organization.
+- `src/presets.js`: role and project suggestions.
+- `src/organization.js`: reporting-tree construction and chart markup.
+- `src/speech.js`: opt-in browser dictation and cleanup.
+- `src/forms.js`: goal editor and execution evidence.
 - `src/views.js`: escaped workspace, project, team, and task markup.
 - `src/app.js`: navigation, state refresh, and user actions.
 - `src/main.js`: application entry point.
@@ -42,6 +49,8 @@ Tests use Node and jsdom. The integration test starts a real Python backend and 
 3. `styles/projects.css`: metrics, project cards, and empty states.
 4. `styles/work.css`: charters, teams, tasks, status badges, and activity.
 5. `styles/forms.css`: feedback, dialogs, fields, and evidence panels.
-6. `styles/responsive.css`: breakpoints and reduced-motion overrides.
+6. `styles/organization.css`: shared organization chart and reporting connectors.
+7. `styles/project-setup.css`: guided steps, role suggestions, and review.
+8. `styles/responsive.css`: shared breakpoints and reduced-motion overrides.
 
 Keep responsive overrides last. Add component-specific rules to their owning file instead of growing the entry point. Function references live beside the JavaScript implementations as JSDoc; Python functions use docstrings.
