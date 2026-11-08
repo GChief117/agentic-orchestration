@@ -7,6 +7,8 @@ export const BRAND_STYLES = {
   minimal: "Minimal accent",
   seal: "Circular seal",
   square: "Square seal",
+  outlined: "Outlined seal",
+  underline: "Underlined wordmark",
 };
 
 /** Render one trusted brand lockup for both the sidebar and its exact preview. */
@@ -21,6 +23,8 @@ export function renderBrand(style = "arrow") {
     minimal: '<span class="brand-accent" aria-hidden="true"></span>',
     seal: '<span class="brand-icon" aria-hidden="true">O</span>',
     square: '<span class="brand-icon" aria-hidden="true">O</span>',
+    outlined: '<span class="brand-icon" aria-hidden="true">O</span>',
+    underline: "",
   };
   return `<span class="brand-lockup brand-variant-${style}">${marks[style]}<span class="brand-copy"><span class="brand-title">Orchestration</span><small>Project workspace</small></span></span>`;
 }

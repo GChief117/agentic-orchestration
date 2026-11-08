@@ -392,7 +392,9 @@
 }
 .brand-variant-seal .brand-icon {
   border-radius: 50%;
-  font: 400 25px/1 Georgia, serif;
+  font:
+    400 25px/1 Georgia,
+    serif;
 }
 .brand-variant-square .brand-icon {
   width: 36px;
@@ -480,4 +482,34 @@
   .sidebar .brand-lockup small {
     display: none;
   }
+}
+
+/* Additional lockups preserve the filled circular and square seal choices. */
+.brand-variant-outlined .brand-icon,
+:root[data-theme] .brand-variant-outlined .brand-icon {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--green);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--green);
+  font:
+    400 25px/1 Georgia,
+    serif;
+}
+.brand-variant-outlined .brand-title {
+  font-family: var(--warm-heading, Georgia, serif);
+  font-weight: 400;
+}
+.brand-variant-underline .brand-title {
+  display: inline-block;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--green);
+  font-family: var(--warm-heading, Georgia, serif);
+  font-size: 23px;
+  font-weight: 400;
+}
+.brand-variant-underline small {
+  margin-top: 7px;
+  letter-spacing: 2px;
 }

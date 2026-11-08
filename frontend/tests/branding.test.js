@@ -9,7 +9,7 @@ import {
 } from "../src/branding.js";
 import { openAppearanceForm } from "../src/appearance.js";
 
-test("seven branding samples apply to the existing navigation link and persist", () => {
+test("nine branding samples apply to the existing navigation link and persist", () => {
   const dom = new JSDOM('<a data-brand data-action="projects" href="#"></a>', {
     url: "http://localhost",
   });
@@ -18,7 +18,7 @@ test("seven branding samples apply to the existing navigation link and persist",
     document.documentElement.dataset.theme = "warm";
     const link = document.querySelector("[data-brand]");
     const dialog = openAppearanceForm(document);
-    assert.equal(dialog.querySelectorAll("[data-brand-option]").length, 7);
+    assert.equal(dialog.querySelectorAll("[data-brand-option]").length, 9);
     for (const style of Object.keys(BRAND_STYLES)) {
       dialog
         .querySelector(`[data-brand-option="${style}"] .brand-title`)
@@ -40,8 +40,8 @@ test("seven branding samples apply to the existing navigation link and persist",
     }
     delete document.documentElement.dataset.brandStyle;
     initializeBrandStyle(document);
-    assert.equal(document.documentElement.dataset.brandStyle, "square");
-    assert.equal(link.innerHTML, renderBrand("square"));
+    assert.equal(document.documentElement.dataset.brandStyle, "underline");
+    assert.equal(link.innerHTML, renderBrand("underline"));
     applyBrandStyle(document, "<script>");
     assert.equal(document.documentElement.dataset.brandStyle, "arrow");
     assert.equal(link.querySelector("script"), null);
