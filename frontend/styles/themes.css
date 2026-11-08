@@ -225,3 +225,35 @@
   color: #e9cb8d;
   background: #423a29;
 }
+
+/* Warm typography is independent of its palette and component geometry. */
+:root[data-theme="warm"][data-warm-typography="clean"] h1,
+:root[data-theme="warm"][data-warm-typography="clean"] h2 {
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+:root[data-theme="warm"][data-warm-typography="soft"] {
+  font-family: "Avenir Next", Avenir, "Trebuchet MS", sans-serif;
+}
+:root[data-theme="warm"][data-warm-typography="soft"] h1,
+:root[data-theme="warm"][data-warm-typography="soft"] h2 {
+  font-family: inherit;
+}
+.warm-typography {
+  margin-top: 24px;
+}
+.typography-sample {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.typography-sample p {
+  margin-bottom: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
