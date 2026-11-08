@@ -32,6 +32,7 @@ STATIC_ASSETS = {
             "organization",
             "project-setup",
             "responsive",
+            "themes",
         )
     },
     "/assets/styles.css": (FRONTEND / "styles.css", "text/css; charset=utf-8"),
@@ -57,6 +58,7 @@ STATIC_ASSETS = {
             "team-form",
             "provider-form",
             "import-form",
+            "appearance",
         )
     },
 }

@@ -21,6 +21,7 @@ test("CSS entry imports parseable local modules in cascade order", async () => {
       "organization",
       "project-setup",
       "responsive",
+      "themes",
     ].map((name) => `./styles/${name}.css`),
   );
   const errors = [];

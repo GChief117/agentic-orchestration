@@ -7,8 +7,8 @@
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-  color: #172722;
-  background: #f6f7f8;
+  color: var(--theme-text, #172722);
+  background: var(--theme-soft, #f6f7f8);
   font-synthesis: none;
   --ink: #172722;
   --muted: #718078;
@@ -47,7 +47,7 @@ a:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline: 3px solid #89b9a0;
+  outline: 3px solid var(--theme-border, #89b9a0);
   outline-offset: 3px;
 }
 button {

@@ -1,3 +1,4 @@
+import { initializeAppearance, openAppearanceForm } from "./appearance.js";
 import { openImportForm } from "./import-form.js";
 import { openProviderForm } from "./provider-form.js";
 import { openTeamForm } from "./team-form.js";
@@ -12,6 +13,7 @@ import { renderWorkspace } from "./views.js";
  * @returns {object} Initial ready promise, refresh function, snapshot getter, and cleanup.
  */
 export function mountApp({ document, api, pollInterval = 2000 }) {
+  initializeAppearance(document);
   const root = document.getElementById("app");
   const feedback = document.getElementById("feedback");
   let snapshot = null,
@@ -220,6 +222,8 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
           await afterMutation();
           notify(`${projects.length} local projects imported.`);
         });
+      else if (button.dataset.action === "appearance")
+        dialog = openAppearanceForm(document);
       else if (button.dataset.action === "providers")
         dialog = openProviderForm(document, api);
       else if (button.dataset.action === "refresh") await refresh();

@@ -58,3 +58,7 @@ Tests use Node and jsdom. The integration test starts a real Python backend and 
 Keep responsive overrides last. Add component-specific rules to their owning file instead of growing the entry point. Function references live beside the JavaScript implementations as JSDoc; Python functions use docstrings.
 
 Saved teams can be edited only when their project has no queued or running work. Agent IDs remain stable across edits. Agents with recorded tasks cannot be removed, so their historical ownership remains resolvable; unused agents can be added or removed.
+
+## Appearance options
+
+Use **Appearance** in the sidebar to compare Crisp neutral, Dark graphite, Warm minimal, and Original green. A choice updates shared color tokens across the existing screens without changing layout or project data. Only the appearance name is saved in browser local storage; credentials remain in memory. Theme definitions live in `styles/themes.css`.

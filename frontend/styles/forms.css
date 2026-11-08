@@ -9,25 +9,25 @@
   margin-bottom: 20px;
 }
 .notice.info {
-  background: #f3f7f2;
-  border-color: #e1e9df;
-  color: #72876f;
+  background: var(--theme-soft, #f3f7f2);
+  border-color: var(--theme-border, #e1e9df);
+  color: var(--theme-secondary, #72876f);
 }
 .notice.danger {
-  background: #fff4f1;
-  border-color: #efd6cf;
-  color: #a25a4e;
+  background: var(--theme-soft, #fff4f1);
+  border-color: var(--theme-border, #efd6cf);
+  color: var(--theme-accent, #a25a4e);
 }
 .feedback {
   position: fixed;
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  background: #193c2c;
-  color: #edf8ec;
+  background: var(--theme-inverse, #193c2c);
+  color: var(--theme-on-accent, #edf8ec);
   padding: 13px 21px;
   border-radius: 8px;
-  box-shadow: 0 6px 30px #16302120;
+  box-shadow: 0 6px 30px var(--theme-shadow, #16302120);
   z-index: 1000;
   font-size: 12px;
   max-width: 90vw;
@@ -44,14 +44,14 @@
   width: min(900px, calc(100vw - 36px));
   max-height: calc(100vh - 50px);
   padding: 0;
-  border: 1px solid #dbe5dc;
+  border: 1px solid var(--theme-border, #dbe5dc);
   border-radius: 13px;
-  background: #fff;
+  background: var(--theme-surface, #fff);
   color: var(--ink);
-  box-shadow: 0 24px 100px #14241e38;
+  box-shadow: 0 24px 100px var(--theme-shadow, #14241e38);
 }
 .editor-dialog::backdrop {
-  background: #13201977;
+  background: var(--theme-shadow, #13201977);
   backdrop-filter: blur(3px);
 }
 .dialog-header {
@@ -62,7 +62,7 @@
   border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
-  background: white;
+  background: var(--theme-surface, white);
   z-index: 1;
 }
 .dialog-header h2 {
@@ -79,12 +79,12 @@
   gap: 25px;
   padding: 18px 28px;
   border-top: 1px solid var(--line);
-  background: #fafcf9;
+  background: var(--theme-surface, #fafcf9);
   position: sticky;
   bottom: 0;
 }
 .dialog-footer > span {
-  color: #8b9d8b;
+  color: var(--theme-secondary, #8b9d8b);
   font-size: 10px;
   max-width: 430px;
   line-height: 1.6;
@@ -98,20 +98,20 @@
 }
 .field > span {
   font-size: 11px;
-  color: #657f6b;
+  color: var(--theme-secondary, #657f6b);
   font-weight: 550;
 }
 .field small {
   font-size: 10px;
-  color: #94a58f;
+  color: var(--theme-secondary, #94a58f);
   line-height: 1.5;
 }
 input:not([type="checkbox"]),
 textarea,
 select {
-  border: 1px solid #d8e2d7;
-  background: #fff;
-  color: #254b32;
+  border: 1px solid var(--theme-border, #d8e2d7);
+  background: var(--theme-surface, #fff);
+  color: var(--theme-text, #254b32);
   padding: 10px 12px;
   border-radius: 6px;
   width: 100%;
@@ -151,7 +151,7 @@ input[type="checkbox"] {
 .agent-editor,
 .task-editor {
   border: 1px solid var(--line);
-  background: #fcfdfb;
+  background: var(--theme-surface, #fcfdfb);
   border-radius: 9px;
   padding: 20px;
   margin: 0 0 24px;
@@ -160,7 +160,7 @@ input[type="checkbox"] {
 legend {
   font-size: 11px;
   font-weight: 600;
-  color: #58725b;
+  color: var(--theme-secondary, #58725b);
   padding: 0 8px;
 }
 .capability-picker,
@@ -182,7 +182,7 @@ legend {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #708870;
+  color: var(--theme-secondary, #708870);
 }
 .checkbox-line {
   margin-bottom: 15px;
@@ -200,15 +200,15 @@ legend {
   font-size: 9px;
   letter-spacing: 0.8px;
   text-transform: uppercase;
-  color: #93a38e;
+  color: var(--theme-secondary, #93a38e);
 }
 .evidence-meta dd {
   font-size: 12px;
   margin: 7px 0 0;
 }
 .evidence-dialog pre {
-  background: #f4f6f1;
-  border: 1px solid #e4eade;
+  background: var(--theme-soft, #f4f6f1);
+  border: 1px solid var(--theme-border, #e4eade);
   padding: 16px;
   border-radius: 7px;
   font:

@@ -9,7 +9,7 @@
   width: 100%;
   min-width: 0;
   overflow: hidden;
-  background: #f8fbf5;
+  background: var(--theme-soft, #f8fbf5);
   border-radius: 9px;
 }
 .organization-chart svg {
@@ -24,18 +24,18 @@
 }
 .org-connectors path {
   fill: none;
-  stroke: #aec3aa;
+  stroke: var(--theme-border, #aec3aa);
   stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
 }
 .org-node rect {
-  fill: #fff;
-  stroke: #cedec8;
+  fill: var(--theme-surface, #fff);
+  stroke: var(--theme-border, #cedec8);
   stroke-width: 1.2;
   vector-effect: non-scaling-stroke;
 }
 .org-node circle {
-  fill: #edf4e6;
+  fill: var(--theme-soft, #edf4e6);
 }
 .org-node text {
   text-anchor: middle;
@@ -44,20 +44,20 @@
 }
 .node-initial {
   font-size: 11px;
-  fill: #5d7a53;
+  fill: var(--theme-secondary, #5d7a53);
   font-weight: 600;
 }
 .node-name {
   font-size: 12px;
-  fill: #2c4c2c;
+  fill: var(--theme-text, #2c4c2c);
   font-weight: 600;
 }
 .node-role {
   font-size: 10px;
-  fill: #7e9475;
+  fill: var(--theme-secondary, #7e9475);
 }
 .owner-node rect {
-  fill: #f4f8ef;
+  fill: var(--theme-soft, #f4f8ef);
   stroke-dasharray: 5 4;
 }
 .owner-node .node-initial {
@@ -67,41 +67,41 @@
   cursor: pointer;
 }
 .org-node[role="button"]:hover rect {
-  stroke: #73955d;
-  fill: #fcfff7;
+  stroke: var(--theme-accent, #73955d);
+  fill: var(--theme-surface, #fcfff7);
 }
 .org-node.selected rect {
-  stroke: #34703e;
+  stroke: var(--theme-accent, #34703e);
   stroke-width: 2.5;
-  fill: #f2f9eb;
+  fill: var(--theme-soft, #f2f9eb);
 }
 .org-node:focus {
   outline: none;
 }
 .org-node:focus rect {
-  stroke: #34703e;
+  stroke: var(--theme-accent, #34703e);
   stroke-width: 3;
 }
 .org-node.drop-target rect {
-  stroke: #207956;
+  stroke: var(--theme-accent, #207956);
   stroke-width: 3;
-  fill: #e2f1d8;
+  fill: var(--theme-soft, #e2f1d8);
 }
 .node-busy {
-  fill: #6caf70 !important;
+  fill: var(--theme-secondary, #6caf70) !important;
 }
 .org-drag-link {
   pointer-events: none;
   fill: none;
-  stroke: #6a9b62;
+  stroke: var(--theme-accent, #6a9b62);
   stroke-width: 2;
   stroke-dasharray: 5 4;
 }
 .organization-editor {
-  border: 1px solid #d8e5d0;
+  border: 1px solid var(--theme-border, #d8e5d0);
   border-radius: 11px;
   overflow: hidden;
-  background: #fff;
+  background: var(--theme-surface, #fff);
 }
 .chart-toolbar {
   display: flex;
@@ -109,7 +109,7 @@
   justify-content: space-between;
   gap: 20px;
   padding: 18px 20px;
-  border-bottom: 1px solid #e2eadc;
+  border-bottom: 1px solid var(--theme-border, #e2eadc);
 }
 .chart-toolbar strong {
   font-size: 14px;
@@ -119,7 +119,7 @@
 .chart-toolbar > div > span {
   display: block;
   font-size: 11px;
-  color: #788c6e;
+  color: var(--theme-secondary, #788c6e);
   margin-top: 5px;
 }
 .chart-add-controls {
@@ -136,7 +136,7 @@
 }
 .chart-workspace {
   min-width: 0;
-  background: #f8fbf5;
+  background: var(--theme-soft, #f8fbf5);
   padding: 16px;
 }
 .chart-workspace .organization-chart svg {
@@ -156,12 +156,12 @@
   min-width: 44px;
   text-align: center;
   font-size: 10px;
-  color: #78926e;
+  color: var(--theme-secondary, #78926e);
 }
 .chart-message {
   min-height: 16px;
   font-size: 11px;
-  color: #627c56;
+  color: var(--theme-secondary, #627c56);
   margin: 7px 0 16px;
 }
 .chart-capacity {
@@ -170,8 +170,8 @@
 }
 .node-inspector {
   padding: 20px;
-  border-left: 1px solid #e1e9da;
-  background: #fff;
+  border-left: 1px solid var(--theme-border, #e1e9da);
+  background: var(--theme-surface, #fff);
   max-height: 720px;
   overflow: auto;
 }
@@ -199,7 +199,7 @@
 .inspector-empty p {
   font-size: 12px;
   line-height: 1.9;
-  color: #7b8b70;
+  color: var(--theme-secondary, #7b8b70);
 }
 .team-organization-dialog,
 .guided-project-dialog {
@@ -211,7 +211,7 @@
   }
   .node-inspector {
     border-left: 0;
-    border-top: 1px solid #e1e9da;
+    border-top: 1px solid var(--theme-border, #e1e9da);
     max-height: none;
   }
   .chart-toolbar {
@@ -243,19 +243,19 @@
 /* The real card follows the pointer; its original slot remains a visible reference. */
 .org-node.dragging {
   pointer-events: none;
-  filter: drop-shadow(0 6px 10px #23462b33);
+  filter: drop-shadow(0 6px 10px var(--theme-shadow, #23462b33));
 }
 .org-node.dragging rect {
-  fill: #fff;
-  stroke: #34703e;
+  fill: var(--theme-surface, #fff);
+  stroke: var(--theme-accent, #34703e);
   stroke-width: 2.5;
 }
 .organization-chart svg.is-dragging {
   cursor: grabbing;
 }
 .org-drag-origin {
-  fill: #eff5ea;
-  stroke: #b7cdb0;
+  fill: var(--theme-soft, #eff5ea);
+  stroke: var(--theme-border, #b7cdb0);
   stroke-dasharray: 5 4;
   stroke-width: 1.5;
   pointer-events: none;
