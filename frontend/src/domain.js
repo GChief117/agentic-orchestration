@@ -15,7 +15,7 @@ export const ACTIONS = {
  * Display labels and fixed CSS tones for backend task and goal states.
  */
 export const STATUSES = {
-  accepted: { label: "Verified", tone: "success" },
+  accepted: { label: "Finished", tone: "success" },
   queued: { label: "Waiting", tone: "neutral" },
   running: { label: "Running", tone: "active" },
   cancelling: { label: "Cancelling", tone: "warning" },

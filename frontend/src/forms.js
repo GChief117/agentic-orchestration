@@ -4,7 +4,7 @@ import {
   goalPayload,
   starterTasks,
 } from "./domain.js";
-import { icon } from "./views.js";
+import { icon, renderGoalTiming, renderTaskTiming } from "./views.js";
 import { input, value, showError, mountDialog } from "./form-controls.js";
 export { openProjectForm } from "./project-form.js";
 
@@ -32,8 +32,10 @@ export function openGoalForm(
     .join("");
   let sourceFiles = [],
     sourceError = "",
-    sourceTruncated = false;
-  let sourcesLoading = Boolean(view.project.source_path && loadSourceFiles);
+    sourceTruncated = false,
+    sourceBridge = null;
+  const hasSources = Boolean(view.project.source_path || view.project.has_source_bridge);
+  let sourcesLoading = Boolean(hasSources && loadSourceFiles);
   let title = "",
     nextId = 1;
   const planners = view.agents.filter(
@@ -44,6 +46,7 @@ export function openGoalForm(
   let coordinator =
     (planners.find((agent) => !agent.reports_to) || planners[0])?.key || "";
   let planSummary = "";
+  let planTiming = null;
   let teamRevision = null;
   const goalSources = { source_files: [], source_filter: "" };
   /**
@@ -137,6 +140,7 @@ export function openGoalForm(
         ...tasks.map((task) => Number(task.id.match(/^task-(\d+)$/)?.[1]) || 0),
       ) + 1;
       planSummary = typeof plan.summary === "string" ? plan.summary : "";
+      planTiming = plan.timing || null;
       teamRevision = plan.team_revision;
       if (plan.coordinator_key) coordinator = plan.coordinator_key;
       title = title.trim() || suggestedTitle();
@@ -164,6 +168,7 @@ export function openGoalForm(
       title = title.trim() || suggestedTitle();
       teamRevision = null;
       planSummary = "";
+      planTiming = null;
       const task = blankTask();
       const lead = view.agents.find((agent) => agent.key === coordinator);
       if (lead) {
@@ -239,10 +244,14 @@ export function openGoalForm(
         .join("") || '<p class="muted">No matching text files.</p>'
     );
   }
-  /** Offer explicit read-only attachments from the selected project's source folder. */
+  /** Offer explicit source attachments from the project's connected bridge or local folder. */
   function sourcePicker(task, planning = false) {
-    if (!view.project.source_path) return "";
-    return `<details class="source-picker"><summary>Project source files · <span data-source-count>${(task.source_files || []).length}</span> selected</summary><p class="muted">${e(view.project.source_path)}</p><p>${planning ? "Choose up to 8 files to share with the planning coordinator and the proposed tasks." : "Choose up to 8 files. Their contents are sent to this agent’s provider when you start the task."} Original files are not modified.</p>${sourcesLoading ? '<p class="muted">Loading filenames…</p>' : sourceError ? `<p role="alert">${e(sourceError)}</p>` : `<input aria-label="Filter project files" data-source-filter placeholder="Filter filenames" value="${e(task.source_filter || "")}"><div class="source-options" data-source-options>${sourceOptions(task)}</div><small>${sourceFiles.length} available files. Up to 100 matches shown.${sourceTruncated ? " Listing was limited; narrow the project folder if needed." : ""}</small>`}</details>`;
+    if (!hasSources) return "";
+    const bridgeConnected = Boolean(sourceBridge || view.project.has_source_bridge);
+    const origin = bridgeConnected
+      ? `Connected source bridge: ${sourceBridge?.name || "configured project bridge"}${sourceBridge?.hostname ? ` · ${sourceBridge.hostname}` : ""}`
+      : view.project.source_path;
+    return `<details class="source-picker"><summary>Project source files · <span data-source-count>${(task.source_files || []).length}</span> selected</summary><p class="muted">${e(origin)}</p>${bridgeConnected ? '<p class="muted">Paths use repository/file names from the connected source. A local folder with the same name is not the remote source.</p>' : ""}<p>${planning ? "Choose up to 8 files to share with the planning coordinator. Review each proposed task’s own source selection before starting." : "Choose up to 8 files. Their contents are sent to this agent’s provider when you start the task."} Original files are not modified.</p>${sourcesLoading ? '<p class="muted">Loading filenames…</p>' : sourceError ? `<p role="alert">${e(sourceError)}</p>` : `<input aria-label="Filter project files" data-source-filter placeholder="Filter filenames" value="${e(task.source_filter || "")}"><div class="source-options" data-source-options>${sourceOptions(task)}</div><small>${sourceFiles.length} available files. Up to 100 matches shown.${sourceTruncated ? " Listing was limited; use the filter to find a source file." : ""}</small>`}</details>`;
   }
   /** Explain the difference between enforced API limits and a CLI output request. */
   function tokenLimitInput(agent, task) {
@@ -269,14 +278,14 @@ export function openGoalForm(
    */
   function render() {
     if (stage === "goal") return renderGoal();
-    content.innerHTML = `<form data-goal-form><div class="dialog-body">${planSummary ? `<div class="notice info"><strong>Coordinator’s plan</strong><p>${e(planSummary)}</p><span>Review and adjust the tasks below before starting the goal.</span></div>` : '<div class="notice info">Define the tasks your team should run. Each task follows its dependencies and the settings saved for its assigned agent.</div>'}${input("Goal title", "goal-title", title, { required: true })}<div class="form-section-heading"><h3>Tasks & dependencies</h3><button class="text-button" type="button" data-example>Use release example</button></div>${tasks
+    content.innerHTML = `<form data-goal-form><div class="dialog-body">${planSummary ? `<div class="notice info"><strong>Coordinator’s plan</strong><p>${e(planSummary)}</p><span>Review and adjust the tasks below before starting the goal.</span></div>` : '<div class="notice info">Define the tasks your team should run. Each task follows its dependencies and the settings saved for its assigned agent.</div>'}${renderGoalTiming(planTiming, { preview: true })}${input("Goal title", "goal-title", title, { required: true })}<div class="form-section-heading"><h3>Tasks & dependencies</h3><button class="text-button" type="button" data-example>Use release example</button></div>${tasks
       .map((task, index) => {
         const agent =
           view.agents.find((item) => item.key === task.agent) || view.agents[0];
         const capabilities = agent.capabilities;
         if (!capabilities.includes(task.capability))
           task.capability = capabilities[0];
-        return `<fieldset class="task-editor" data-task="${e(task.id)}"><legend>Step ${index + 1} · ${e(task.id)}</legend>${input("Task title", "title", task.title, { required: true })}<div class="form-grid"><label class="field"><span>Assigned agent</span><select aria-label="Assigned agent" data-field="agent">${view.agents.map((candidate) => `<option value="${e(candidate.key)}" ${agent.key === candidate.key ? "selected" : ""}>${e(candidate.name)} · ${e(candidate.role)}</option>`).join("")}</select></label><label class="field"><span>Action</span><select aria-label="Action" data-field="capability">${capabilities.map((cap) => `<option value="${e(cap)}" ${task.capability === cap ? "selected" : ""}>${e(ACTIONS[cap]?.label || cap)}</option>`).join("")}</select></label></div>${task.capability.startsWith("files.") ? input("Project-relative file path", "path", task.path, { required: true, hint: "For example: release/checklist.txt" }) : task.capability === "terminal.python_version" ? '<p class="muted">Checks the configured Python runtime on the local target.</p>' : ""}${task.capability === "model.generate" ? `<p class="muted">${agent.execution_mode === "cli" ? "Local CLI" : "API key"} · ${e(agent.provider || "No provider")} · ${e(agent.model || "No model selected")}</p>${input("Task prompt", "prompt", task.prompt || "", { required: true, textarea: true, rows: 5 })}${sourcePicker(task)}${modelSettings(agent, task)}` : ""}${task.capability === "files.write" ? input("File contents", "content", task.content, { textarea: true }) : ""}${task.capability === "files.inspect" ? `<label class="checkbox-line"><input type="checkbox" data-field="compare" ${task.compare ? "checked" : ""}> Compare exact contents</label>${task.compare ? input("Expected contents", "expected", task.expected, { textarea: true }) : '<p class="muted">Checks that the file is readable and records its digest.</p>'}` : ""}<div class="dependency-picker"><span class="label">Wait for these tasks to be verified</span>${
+        return `<fieldset class="task-editor" data-task="${e(task.id)}"><legend>Step ${index + 1} · ${e(task.id)}</legend>${renderTaskTiming(planTiming?.task_timings?.[task.id], { preview: true })}${input("Task title", "title", task.title, { required: true })}<div class="form-grid"><label class="field"><span>Assigned agent</span><select aria-label="Assigned agent" data-field="agent">${view.agents.map((candidate) => `<option value="${e(candidate.key)}" ${agent.key === candidate.key ? "selected" : ""}>${e(candidate.name)} · ${e(candidate.role)}</option>`).join("")}</select></label><label class="field"><span>Action</span><select aria-label="Action" data-field="capability">${capabilities.map((cap) => `<option value="${e(cap)}" ${task.capability === cap ? "selected" : ""}>${e(ACTIONS[cap]?.label || cap)}</option>`).join("")}</select></label></div>${task.capability.startsWith("files.") ? input("Project-relative file path", "path", task.path, { required: true, hint: "For example: release/checklist.txt" }) : task.capability === "terminal.python_version" ? '<p class="muted">Checks the configured Python runtime on the local target.</p>' : ""}${task.capability === "model.generate" ? `<p class="muted">${agent.execution_mode === "cli" ? "Local CLI" : "API key"} · ${e(agent.provider || "No provider")} · ${e(agent.model || "No model selected")}</p>${input("Task prompt", "prompt", task.prompt || "", { required: true, textarea: true, rows: 5 })}${sourcePicker(task)}${modelSettings(agent, task)}` : ""}${task.capability === "files.write" ? input("File contents", "content", task.content, { textarea: true }) : ""}${task.capability === "files.inspect" ? `<label class="checkbox-line"><input type="checkbox" data-field="compare" ${task.compare ? "checked" : ""}> Compare exact contents</label>${task.compare ? input("Expected contents", "expected", task.expected, { textarea: true }) : '<p class="muted">Checks that the file is readable and records its digest.</p>'}` : ""}<div class="dependency-picker"><span class="label">Wait for these tasks to be verified</span>${
           tasks
             .filter((other) => other.id !== task.id)
             .map(
@@ -298,6 +307,7 @@ export function openGoalForm(
       try {
         tasks = starterTasks(view.agents);
         planSummary = "";
+        planTiming = null;
         teamRevision = null;
         title = "Prepare a verified release";
         nextId = 4;
@@ -384,6 +394,7 @@ export function openGoalForm(
       .then((result) => {
         sourceFiles = result.files;
         sourceTruncated = result.truncated;
+        sourceBridge = result.bridge || null;
       })
       .catch((error) => {
         sourceError = error.message;
@@ -408,9 +419,33 @@ export function openGoalForm(
   return dialog;
 }
 
+/** Return a download filename without local directory names or control characters. */
+function resultFilename(name) {
+  const filename = String(name || "result.txt").replaceAll("\\", "/").split("/").pop().replace(/[\u0000-\u001f\u007f]/g, "");
+  return filename && ![".", ".."].includes(filename) ? filename : "result.txt";
+}
+
+/** Download bounded text through a temporary link without object URLs or persistent timers. */
+function downloadArtifact(document, artifact, fallbackName) {
+  if (typeof artifact?.content !== "string") throw new Error("This result has no downloadable text.");
+  const link = document.createElement("a");
+  link.href = `data:text/plain;charset=utf-8,${encodeURIComponent(artifact.content)}`;
+  link.download = resultFilename(artifact.name || fallbackName);
+  link.hidden = true;
+  document.body.append(link);
+  try { link.click(); }
+  finally { link.remove(); }
+}
+
+/** Fetch a saved task result and request a local text download. */
+export async function downloadTaskArtifact(document, task, api) {
+  const artifact = await api.artifact(task.id);
+  downloadArtifact(document, artifact, task.receipt?.artifact);
+}
+
 /**
- * Open execution evidence and fetch its artifact when a receipt references one.
- * Render receipt and artifact text without interpreting it as HTML.
+ * Show a saved result first, with execution evidence available in collapsed details.
+ * Render result and receipt text without interpreting either as HTML.
  * @param {Document} document Host document.
  * @param {object} task Selected backend task.
  * @param {object|undefined} agent Assigned agent record if available.
@@ -418,21 +453,29 @@ export function openGoalForm(
  * @returns {Promise<HTMLDialogElement>} Mounted evidence dialog.
  */
 export async function openTaskDetails(document, task, agent, api) {
-  const { dialog } = mountDialog(document, task.title, "Task evidence");
+  const hasArtifact = Boolean(task.receipt?.artifact);
+  const { dialog } = mountDialog(document, task.title, hasArtifact ? "Task result" : "Task evidence");
   dialog.classList.add("evidence-dialog");
   const content = dialog.querySelector("[data-content]");
-  content.innerHTML = `<div class="dialog-body"><dl class="evidence-meta"><div><dt>Assigned agent</dt><dd>${e(agent?.name || "Unknown")}</dd></div><div><dt>Status</dt><dd>${e(task.state)}</dd></div><div><dt>Action</dt><dd>${e(ACTIONS[task.capability]?.label || task.capability)}</dd></div></dl>${task.error ? `<div class="notice danger">${e(task.error)}</div>` : ""}<h3>Execution receipt</h3><pre data-receipt></pre><section data-artifact class="hidden"><h3>Artifact contents</h3><pre data-artifact-content></pre></section><div class="notice danger hidden" data-error role="alert"></div></div>`;
+  content.innerHTML = `<div class="dialog-body">${hasArtifact ? `<section data-artifact><div class="result-heading"><h3 data-artifact-name>${e(task.receipt.artifact)}</h3><button class="button primary" type="button" data-download-artifact="${e(task.id)}" disabled>Download result</button></div><p class="muted">Review this saved output against the goal and its source evidence.</p><pre data-artifact-content aria-label="Result contents">Loading result…</pre></section>` : ""}<dl class="evidence-meta"><div><dt>Assigned agent</dt><dd>${e(agent?.name || "Unknown")}</dd></div><div><dt>Execution status</dt><dd>${e(task.state === "accepted" ? "Finished" : task.state)}</dd></div><div><dt>Action</dt><dd>${e(ACTIONS[task.capability]?.label || task.capability)}</dd></div></dl>${task.error ? `<div class="notice danger">${e(task.error)}</div>` : ""}<details class="execution-receipt" ${hasArtifact ? "" : "open"}><summary>Execution receipt</summary><pre data-receipt></pre></details><div class="notice danger hidden" data-error role="alert"></div></div>`;
   content.querySelector("[data-receipt]").textContent = task.receipt
     ? JSON.stringify(task.receipt, null, 2)
     : "No receipt yet. This task has not completed an execution.";
-  if (task.receipt?.artifact) {
+  if (hasArtifact) {
     try {
       const artifact = await api.artifact(task.id);
+      if (typeof artifact?.content !== "string") throw new Error("This result has no readable text.");
       content.querySelector("[data-artifact-content]").textContent =
         artifact.content;
-      content.querySelector("[data-artifact]").classList.remove("hidden");
+      content.querySelector("[data-artifact-name]").textContent = artifact.name || task.receipt.artifact;
+      const download = content.querySelector("[data-download-artifact]");
+      download.disabled = false;
+      download.addEventListener("click", () => downloadArtifact(document, artifact, task.receipt.artifact));
     } catch (error) {
-      if (dialog.isConnected) showError(dialog, error);
+      if (dialog.isConnected) {
+        content.querySelector("[data-artifact-content]").textContent = "The saved result could not be loaded.";
+        showError(dialog, error);
+      }
     }
   }
   return dialog;

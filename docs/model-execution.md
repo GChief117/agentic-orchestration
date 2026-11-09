@@ -39,6 +39,23 @@ its proposed model tasks. Planned outputs use a unique result namespace so
 later goals do not overwrite earlier generated results. The manual task editor
 remains available as an alternative.
 
+## Timing and live activity
+
+Plan review shows an initial timing window for the goal and its tasks. Once work
+starts, goal cards and task rows show elapsed time, expected completion windows,
+and dependency or capacity waits. Forecasts reuse the scheduler's dependency,
+resource, project, agent, target, and workspace limits. Recent successful task
+durations provide the estimates; sparse history widens the range. When there
+is no usable history, the UI labels known execution timeouts as an initial
+allowance rather than presenting a precise ETA. Estimates are not guarantees.
+
+CLI tasks report bounded live activity and visible response text through the
+existing state polling. Private reasoning, thinking blocks, tool arguments, and
+raw diagnostics are excluded. API tasks show execution stages while waiting for
+their response. Live preview buffers are kept in memory and removed when a task
+finishes; final artifacts and execution receipts remain the durable record.
+Active indicators and chart animations respect reduced-motion preferences.
+
 CLI credentials stay in the provider's persistent credential store on the same
 computer. The app never copies them into its database, project files, or browser
 storage. While the CLI tab is open it checks sign-in about every three seconds;
@@ -68,8 +85,10 @@ target is entered under **Advanced settings**; that target is a request, not
 an enforced limit, and the CLI may use more tokens. Each call uses the selected
 agent's instructions, project charter, roster, and completed handoffs. Explicit
 dependencies take priority over recent collaborating-agent outputs; at most 20
-handoffs and 24,000 result characters are included. Individual results are
-excerpted to 8,000 characters. The prompt reports omitted handoff counts.
+handoffs and 160,000 result characters are included. Individual results are
+excerpted to 32,000 characters. The prompt reports omitted handoff counts and
+whether each result was truncated. Handoffs are scoped to the current goal;
+durable notes shared across goals belong in the project's Shared context bucket.
 Artifacts are verified against their recorded digest before inclusion. A changed
 artifact fails the attempt rather than silently supplying different evidence.
 

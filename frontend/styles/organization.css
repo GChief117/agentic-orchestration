@@ -109,6 +109,14 @@
 }
 .node-busy {
   fill: var(--theme-secondary, #6caf70) !important;
+  animation: node-busy-pulse 1.6s ease-in-out infinite;
+}
+@keyframes node-busy-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .node-busy { animation: none; }
 }
 .org-drag-link {
   pointer-events: none;

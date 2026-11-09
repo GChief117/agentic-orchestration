@@ -135,3 +135,49 @@ test("planning API uses the project endpoint and structured request body", async
   assert.equal(requested.url, "/api/projects/project%2Fid/plan");
   assert.deepEqual(JSON.parse(requested.options.body), payload);
 });
+
+test("bridge source selection keeps each planned task's own files through review and submission", async () => {
+  const dom = new JSDOM("<body></body>");
+  const paths = ["seed/README.md", "engine/src/index.js", "app/config.yaml", "app/README.md"];
+  let planned, started;
+  let filesRequested = 0;
+  try {
+    const dialog = openGoalForm(dom.window.document,
+      { project: { id: "project", name: "Remote work", has_source_bridge: true }, agents: team() },
+      async (payload) => { started = payload; },
+      async () => {
+        filesRequested += 1;
+        return { files: paths.map((path) => ({ path, size: 80 })), bridge: { name: "Polaris", hostname: "polaris-host" }, truncated: false };
+      },
+      async (payload) => {
+        planned = payload;
+        const result = plan();
+        result.tasks[0].parameters.source_files = [paths[1]];
+        result.tasks[1].parameters.source_files = [paths[2], paths[3]];
+        return result;
+      },
+    );
+    await tick();
+    assert.equal(filesRequested, 1);
+    assert.match(dialog.textContent, /Connected source bridge: Polaris · polaris-host/);
+    const seed = [...dialog.querySelectorAll("[data-source-file]")].find((box) => box.value === paths[0]);
+    seed.checked = true;
+    seed.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+    dialog.querySelector('[data-field="goal"]').value = "Review both repositories";
+    submit(dialog, dom);
+    await tick();
+    assert.deepEqual(planned.source_files, [paths[0]]);
+    const selected = (id) => [...dialog.querySelectorAll(`[data-task="${id}"] [data-source-file]:checked`)].map((box) => box.value);
+    assert.deepEqual(selected("task-1"), [paths[1]]);
+    assert.deepEqual(selected("task-2"), [paths[2], paths[3]]);
+    const agent = dialog.querySelector('[data-task="task-1"] [data-field="agent"]');
+    agent.value = "lead";
+    agent.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+    assert.deepEqual(selected("task-1"), [paths[1]]);
+    assert.deepEqual(selected("task-2"), [paths[2], paths[3]]);
+    submit(dialog, dom);
+    await tick();
+    assert.deepEqual(started.tasks[0].parameters.source_files, [paths[1]]);
+    assert.deepEqual(started.tasks[1].parameters.source_files, [paths[2], paths[3]]);
+  } finally { dom.window.close(); }
+});

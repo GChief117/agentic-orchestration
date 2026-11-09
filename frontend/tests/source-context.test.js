@@ -67,3 +67,22 @@ test("source selections survive filtering and are sent only when starting a mode
     dom.window.close();
   }
 });
+
+test("a configured bridge is labeled as the source instead of a same-named local folder", async () => {
+  const dom = new JSDOM("<body></body>");
+  try {
+    const dialog = openGoalForm(dom.window.document,
+      { project: { id: "p", name: "Remote project", source_path: "/local/bridge-checkout", has_source_bridge: true }, agents: [{ ...guidedDraft().agents[0], provider: "openai", model: "test", capabilities: ["model.generate"] }] },
+      async () => {},
+      async () => ({ files: [{ path: "project/main.py", size: 40 }], bridge: { name: "<Polaris>", hostname: "remote-host" } }),
+    );
+    await tick();
+    const picker = dialog.querySelector(".source-picker");
+    assert.match(picker.textContent, /Connected source bridge: <Polaris> · remote-host/);
+    assert.match(picker.textContent, /repository\/file/);
+    assert.doesNotMatch(picker.textContent, /\/local\/bridge-checkout/);
+    assert.equal(picker.querySelector("Polaris"), null);
+    assert.equal(picker.querySelector("[data-source-file]").value, "project/main.py");
+    dialog.close();
+  } finally { dom.window.close(); }
+});

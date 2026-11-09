@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 import threading
+import time
 
 from .connections import LocalConnection
 from .execution import ExecutionCancelled, LocalExecutor
@@ -13,9 +14,12 @@ from .storage import Store
 from .providers import ProviderConnections
 from .models import ModelRuntime
 from .cli_models import CLIRuntime
+from .estimates import estimate_goals
 from .planning import propose_goal, team_revision
 from .sources import list_source_files
 from .discovery import ProjectDiscovery, imported_definition
+from .context import ProjectContext
+from .source_bridges import SourceBridges
 
 
 class Engine:
@@ -48,6 +52,8 @@ class Engine:
             for key, value in target_limits.items()
         }
         self.connection = LocalConnection(Path(directory) / "artifacts")
+        self.context = ProjectContext(directory)
+        self.source_bridges = SourceBridges(directory, enabled=allow_source_access)
         self.allow_source_access = allow_source_access
         self.models = ModelRuntime()
         self.cli = CLIRuntime() if allow_cli else None
@@ -56,6 +62,8 @@ class Engine:
             self.models,
             cli_models=self.cli,
             allow_source_access=allow_source_access,
+            on_progress=self._record_activity,
+            source_reader=self.read_project_files,
         )
         self.store = Store(directory)
         self.providers = ProviderConnections(directory, runtime=self.cli)
@@ -63,6 +71,7 @@ class Engine:
         self.lock = threading.RLock()
         self.stopping = threading.Event()
         self.active = {}
+        self.live_activity = {}
         self.threads = {}
         self.scheduler = None
         self.closed = False
@@ -71,6 +80,32 @@ class Engine:
         """Raise RuntimeError when mutation is attempted during or after shutdown."""
         if self.closed or self.stopping.is_set():
             raise RuntimeError("Engine is shutting down")
+
+    def _record_activity(self, task_id, event):
+        """Keep bounded public progress in memory; never persist model reasoning streams."""
+        if not isinstance(event, dict):
+            return
+        phase = event.get("phase", "working")
+        if phase not in ("starting", "working", "writing", "finalizing"):
+            return
+        message = event.get("message", "Working on the assigned task")
+        preview = event.get("preview")
+        if not isinstance(message, str) or (
+            preview is not None and not isinstance(preview, str)
+        ):
+            return
+        with self.lock:
+            if task_id not in self.active:
+                return
+            previous = self.live_activity.get(task_id, {})
+            self.live_activity[task_id] = {
+                "phase": phase,
+                "message": message[:300],
+                "updated_at": time.time(),
+                "preview": preview[:8000]
+                if preview is not None
+                else previous.get("preview", ""),
+            }
 
     def create_project(self, document):
         """Validate and atomically persist a charter and roster; return the project ID.
@@ -148,9 +183,64 @@ class Engine:
             raise PermissionError("Local source files are unavailable in hosted mode")
         with self.lock:
             project = self.store.project(project_id)
+        if self.source_bridges.configured(project_id):
+            return self.source_bridges.list_files(project_id)
         if not project.get("source_path"):
             raise ValueError("Import a local project before selecting source files")
         return list_source_files(project["source_path"])
+
+    def read_project_files(self, project_id, paths):
+        """Read explicit project sources through the configured source connection."""
+        from .sources import read_source_files
+
+        if not self.allow_source_access:
+            raise PermissionError("Source files are unavailable in hosted mode")
+        with self.lock:
+            project = self.store.project(project_id)
+        if self.source_bridges.configured(project_id):
+            return self.source_bridges.read_files(project_id, paths)
+        if not project.get("source_path"):
+            raise PermissionError(
+                "Source files require an imported local project or configured source bridge"
+            )
+        return read_source_files(project.get("source_path"), paths)
+
+    def project_context(self, project_id):
+        """Return durable shared context without reading repository contents."""
+        with self.lock:
+            self.store.project(project_id)
+            saved = self.context.read(project_id)
+        bridge = None
+        if self.source_bridges.configured(project_id):
+            try:
+                inventory = self.source_bridges.inventory(project_id)
+                bridge = {
+                    **inventory["bridge"],
+                    "repositories": inventory["repositories"],
+                }
+            except (ValueError, PermissionError, OSError) as exc:
+                bridge = {
+                    "name": "Source bridge",
+                    "status": "unavailable",
+                    "error": str(exc),
+                    "repositories": [],
+                }
+        return {**saved, "source_bridge": bridge}
+
+    def add_project_context(self, project_id, title, content):
+        """Save shared evidence while idle so an active run keeps consistent context."""
+        with self.lock:
+            self._require_open()
+            self.store.project(project_id)
+            if self.store.db.execute(
+                "SELECT 1 FROM tasks WHERE project_id=? AND state IN ('queued','running','cancelling') LIMIT 1",
+                (project_id,),
+            ).fetchone():
+                raise ValueError(
+                    "Wait for this project's active work to finish before changing shared context"
+                )
+            self.context.add(project_id, title, content)
+        return self.project_context(project_id)
 
     def update_team(self, project_id, document):
         """Persist chart edits for an idle project while preserving historical ownership.
@@ -213,7 +303,9 @@ class Engine:
             if expected_team_revision is not None:
                 if not isinstance(
                     expected_team_revision, str
-                ) or expected_team_revision != team_revision(project, team):
+                ) or expected_team_revision != team_revision(
+                    project, team, self.context.read(project_id)
+                ):
                     raise ValueError(
                         "The team or project changed after planning. Review a new plan before starting."
                     )
@@ -224,6 +316,11 @@ class Engine:
                 team,
                 source_root=project.get("source_path")
                 if self.allow_source_access
+                else None,
+                source_validator=(
+                    lambda paths: self.source_bridges.validate_paths(project_id, paths)
+                )
+                if self.source_bridges.configured(project_id)
                 else None,
             )
             by_id = {agent["id"]: agent for agent in team}
@@ -335,6 +432,12 @@ class Engine:
                     task,
                     context={
                         "project": projects[task["project_id"]],
+                        "goal": dict(
+                            self.store.db.execute(
+                                "SELECT * FROM goals WHERE id=?", (task["goal_id"],)
+                            ).fetchone()
+                        ),
+                        "shared_context": self.context.read(task["project_id"]),
                         "agent": agents[task["agent_id"]],
                         "team": [
                             {
@@ -356,6 +459,7 @@ class Engine:
                                 source
                                 for source in state["tasks"]
                                 if source["project_id"] == task["project_id"]
+                                and source["goal_id"] == task["goal_id"]
                                 and source["state"] == "accepted"
                                 and (
                                     source["id"] in task["dependencies"]
@@ -416,6 +520,7 @@ class Engine:
             self.store.finish(task["id"], state, receipt, error)
             self.store.commit()
             self.active.pop(task["id"], None)
+            self.live_activity.pop(task["id"], None)
             self.threads.pop(task["id"], None)
 
     def snapshot(self):
@@ -426,6 +531,7 @@ class Engine:
         with self.lock:
             snapshot = self.store.snapshot()
             snapshot["active_executions"] = len(self.active)
+            activity = {key: dict(value) for key, value in self.live_activity.items()}
         for goal in snapshot["goals"]:
             members = [
                 task for task in snapshot["tasks"] if task["goal_id"] == goal["id"]
@@ -435,6 +541,8 @@ class Engine:
                 total=len(members),
                 state=goal_state(task["state"] for task in members),
             )
+        for task in snapshot["tasks"]:
+            task["activity"] = activity.get(task["id"])
         for agent in snapshot["agents"]:
             agent["active_executions"] = sum(
                 task["agent_id"] == agent["id"]
@@ -443,6 +551,7 @@ class Engine:
             )
             agent["state"] = "busy" if agent["active_executions"] else "idle"
         for project in snapshot["projects"]:
+            project["has_source_bridge"] = self.source_bridges.configured(project["id"])
             project["team_size"] = sum(
                 agent["project_id"] == project["id"] for agent in snapshot["agents"]
             )
@@ -461,4 +570,13 @@ class Engine:
                 "target_limits": self.target_limits,
             },
         )
+        timing = estimate_goals(snapshot, cli_timeout=getattr(self.cli, "timeout", 120))
+        task_timing = {}
+        for goal in snapshot["goals"]:
+            goal_timing = timing.get(goal["id"])
+            if goal_timing:
+                task_timing.update(goal_timing.pop("task_timings", {}))
+            goal["timing"] = goal_timing
+        for task in snapshot["tasks"]:
+            task["timing"] = task_timing.get(task["id"])
         return snapshot

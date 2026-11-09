@@ -32,6 +32,7 @@ class FakeCLI:
         *,
         cancelled=None,
         speed="standard",
+        progress=None,
     ):
         """Return distinct provider output so downstream handoffs can be checked."""
         self.calls.append((provider, model, system, prompt, speed, max_tokens))

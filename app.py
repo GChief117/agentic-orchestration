@@ -66,6 +66,7 @@ STATIC_ASSETS = {
             "appearance",
             "branding",
             "model-connections",
+            "context-form",
         )
     },
 }
@@ -239,6 +240,14 @@ def make_handler(
                         )
                     except (ValueError, PermissionError, OSError) as exc:
                         self.send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            elif route.startswith("/api/projects/") and route.endswith("/context"):
+                try:
+                    project_id = route.removeprefix("/api/projects/").removesuffix(
+                        "/context"
+                    )
+                    self.send(HTTPStatus.OK, engine.project_context(project_id))
+                except (ValueError, PermissionError, OSError) as exc:
+                    self.send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
             elif route == "/api/models":
                 self.send(
                     HTTPStatus.OK,
@@ -365,6 +374,16 @@ def make_handler(
                     )
                     engine.update_team(project_id, data)
                     self.send(HTTPStatus.OK, {"id": project_id})
+                elif route.startswith("/api/projects/") and route.endswith("/context"):
+                    project_id = route.removeprefix("/api/projects/").removesuffix(
+                        "/context"
+                    )
+                    self.send(
+                        HTTPStatus.CREATED,
+                        engine.add_project_context(
+                            project_id, data.get("title"), data.get("content")
+                        ),
+                    )
                 elif route == "/api/goals":
                     if (
                         not local_features

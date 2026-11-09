@@ -11,10 +11,214 @@ import time
 import unittest
 from unittest.mock import patch
 
-from orchestration.cli_models import CLIRuntime
+from orchestration.cli_models import CLIRuntime, VisibleProgress
 
 
 class CLIRuntimeTests(unittest.TestCase):
+    def test_live_progress_emits_public_text_and_never_reasoning_or_tool_payloads(self):
+        cases = {
+            "openai": [
+                {"type": "turn.started"},
+                {
+                    "type": "item.completed",
+                    "item": {"type": "reasoning", "text": "PRIVATE_REASONING"},
+                },
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "type": "agent_message",
+                        "channel": "analysis",
+                        "text": "PRIVATE_ANALYSIS",
+                    },
+                },
+                {
+                    "type": "item.completed",
+                    "item": {"type": "command_execution", "command": "PRIVATE_COMMAND"},
+                },
+                {
+                    "type": "item.completed",
+                    "item": {"type": "agent_message", "text": "Visible response"},
+                },
+                {"type": "turn.completed"},
+            ],
+            "claude": [
+                {
+                    "type": "stream_event",
+                    "event": {
+                        "type": "content_block_delta",
+                        "delta": {
+                            "type": "thinking_delta",
+                            "thinking": "PRIVATE_REASONING",
+                        },
+                    },
+                },
+                {
+                    "type": "stream_event",
+                    "event": {
+                        "type": "content_block_delta",
+                        "delta": {"type": "text_delta", "text": "Visible "},
+                    },
+                },
+                {
+                    "type": "stream_event",
+                    "event": {
+                        "type": "content_block_delta",
+                        "delta": {"type": "text_delta", "text": "response"},
+                    },
+                },
+                {
+                    "type": "assistant",
+                    "message": {
+                        "content": [
+                            {"type": "thinking", "thinking": "PRIVATE_THOUGHT"},
+                            {"type": "text", "text": "Visible response"},
+                            {"type": "tool_use", "input": "PRIVATE_TOOL"},
+                        ]
+                    },
+                },
+                {"type": "result", "subtype": "success", "result": "Visible response"},
+            ],
+            "gemini": [
+                {
+                    "event": "message",
+                    "message": {
+                        "role": "assistant",
+                        "channel": "analysis",
+                        "content": "PRIVATE_ANALYSIS",
+                    },
+                },
+                {
+                    "event": "step_update",
+                    "step_update": {
+                        "step_type": "reasoning",
+                        "text": "PRIVATE_REASONING",
+                    },
+                },
+                {
+                    "event": "message",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "thinking", "text": "PRIVATE_THOUGHT"},
+                            {"type": "text", "text": "Visible response"},
+                        ],
+                    },
+                },
+                {
+                    "event": "result",
+                    "result": {"status": "SUCCESS", "response": "Visible response"},
+                },
+            ],
+        }
+        for provider, stream in cases.items():
+            with self.subTest(provider=provider):
+                progress = []
+                reader = VisibleProgress(provider, progress.append)
+                raw = b"not a JSON event\n" + b"\n".join(
+                    json.dumps(event).encode() for event in stream
+                )
+                for offset in range(0, len(raw), 17):
+                    reader.feed(raw[offset : offset + 17])
+                reader.finish()
+                self.assertTrue(progress)
+                self.assertEqual(progress[-1]["preview"], "Visible response")
+                self.assertNotIn("PRIVATE", json.dumps(progress))
+                self.assertTrue(
+                    all(
+                        set(item) == {"phase", "message", "preview"}
+                        for item in progress
+                    )
+                )
+
+    def test_claude_streaming_progress_preserves_the_final_result(self):
+        progress = []
+        calls = []
+        output = b"\n".join(
+            [
+                b'{"type":"system","subtype":"init"}',
+                b'{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Done"}}}',
+                b'{"type":"result","subtype":"success","result":"Done","usage":{"output_tokens":1},"session_id":"run-1"}',
+            ]
+        )
+
+        def run(args, stdin, directory, timeout, cancelled, *, on_stdout=None):
+            calls.append(args)
+            self.assertIsNotNone(on_stdout)
+            on_stdout(output[:20])
+            on_stdout(output[20:])
+            return subprocess.CompletedProcess(args, 0, output, b"")
+
+        with patch.object(CLIRuntime, "_run", new=staticmethod(run)), patch(
+            "orchestration.cli_models.shutil.which", return_value="/tool/claude"
+        ):
+            result = CLIRuntime().generate(
+                "claude", "default", "system", "task", progress=progress.append
+            )
+        self.assertEqual(result["text"], "Done")
+        self.assertTrue(result["complete"])
+        self.assertEqual(calls[0][calls[0].index("--output-format") + 1], "stream-json")
+        self.assertIn("--include-partial-messages", calls[0])
+        self.assertEqual(progress[-1]["preview"], "Done")
+        with self.assertRaisesRegex(ValueError, "unique terminal"):
+            CLIRuntime._parse(
+                "claude",
+                output
+                + b'\n{"type":"result","subtype":"success","result":"duplicate"}',
+            )
+
+    def test_progress_is_bounded_and_callback_failures_do_not_interrupt_generation(
+        self,
+    ):
+        progress = []
+        reader = VisibleProgress("openai", progress.append)
+        reader.emit("writing", "Writing the response", "x" * 12000)
+        self.assertEqual(len(progress[-1]["preview"]), 8000)
+        reader = VisibleProgress(
+            "openai",
+            lambda _event: (_ for _ in ()).throw(RuntimeError("observer failed")),
+        )
+        reader.feed(b'{"type":"turn.started"}\n')
+        reader.finish()
+
+        def run(args, *_rest):
+            return subprocess.CompletedProcess(
+                args, 0, b'{"type":"result","subtype":"success","result":"Done"}', b""
+            )
+
+        runtime = CLIRuntime(runner=run)
+        with patch(
+            "orchestration.cli_models.shutil.which", return_value="/tool/claude"
+        ):
+            result = runtime.generate(
+                "claude",
+                "default",
+                "system",
+                "task",
+                progress=lambda _event: (_ for _ in ()).throw(
+                    RuntimeError("observer failed")
+                ),
+            )
+        self.assertEqual(result["text"], "Done")
+
+    def test_process_runner_reports_stdout_before_the_process_exits(self):
+        received = []
+        start = time.monotonic()
+        code = "import sys,time; print('first',flush=True); time.sleep(.2); print('last',flush=True)"
+        with tempfile.TemporaryDirectory() as directory:
+            result = CLIRuntime._run(
+                [sys.executable, "-c", code],
+                b"",
+                directory,
+                5,
+                None,
+                on_stdout=lambda chunk: received.append(
+                    (time.monotonic() - start, chunk)
+                ),
+            )
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(b"".join(chunk for _, chunk in received), b"first\nlast\n")
+        self.assertLess(received[0][0], received[-1][0] - 0.1)
+
     def test_claude_initialization_discovers_safe_models_without_a_user_turn(self):
         calls = []
 

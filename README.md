@@ -45,7 +45,7 @@ python3 -m orchestration examples/backend_goal.json --project examples/greenfiel
 python3 app.py --port 8765 --execution-limit 4
 ```
 
-The first command runs an explicit task graph and prints its result. The second starts the JavaScript project workspace and its authenticated JSON API at `http://127.0.0.1:8765`. The backend initializes projects with charters and assigned agent teams, persists goals, tasks, attempts, and receipts, enforces dependencies and resource conflicts, and executes bounded local operations. Model tasks use OpenAI, Claude, or Gemini through a saved local CLI sign-in or an API key. Each agent has its own execution method, provider, model, and collaboration links. Remote bridges and autonomous tool use are not implemented. See the [backend implementation](docs/backend.md) for the module map, request flow, API, and limitations.
+The first command runs an explicit task graph and prints its result. The second starts the JavaScript project workspace and its authenticated JSON API at `http://127.0.0.1:8765`. The backend initializes projects with charters and assigned agent teams, persists goals, tasks, attempts, and receipts, enforces dependencies and resource conflicts, and executes bounded local operations. Model tasks use OpenAI, Claude, or Gemini through a saved local CLI sign-in or an API key. Each agent has its own execution method, provider, model, and collaboration links. Operator-configured source bridges provide read-only remote repository context; arbitrary remote commands are not exposed to agents. See the [backend implementation](docs/backend.md) for the module map, request flow, API, and limitations.
 
 ## Portable packaging
 
@@ -85,11 +85,19 @@ Discovery routes use the same local session authorization as other APIs: `GET /a
 
 You can also choose **Define tasks manually**. Result filenames are supplied automatically; optional output settings are under **Advanced settings**. CLI tasks have no output-token target unless you set one. If the chart changes after planning, generate a new plan before starting.
 
+Plan review includes timing estimates, and running goals show elapsed time, per-task finish estimates, and live agent activity. Estimates use recorded durations and scheduling constraints; first runs show an initial allowance when history is insufficient. Active indicators highlight running agents, with reduced-motion support.
+
 Model choices use names and descriptions supplied by the native tools. Claude Code exposes its supported model families and versions; Antigravity separates Gemini models from other available families. Selecting a model shows its description and, when provided, the model behind a family alias.
 
 The scheduler enforces task order, project/agent capacity, and file conflicts. Model tasks receive explicitly selected source files, the project charter, their role/instructions, team roster, and available completed outputs from explicit dependencies and collaborating agents. Dashed chart links show collaboration; solid links show reporting. Collaboration does not make tasks wait automatically. Only task dependencies impose execution order.
 
 Results are saved as project-scoped text artifacts with execution method, provider, model, usage, and response metadata. A completed model response is not a guarantee of factual correctness; assign a reviewer for content review. CLI turns run in isolated temporary directories with model tools disabled or denied. The model cannot directly execute shell commands or change project source files through this action. No provider fallback or automatic retry is performed.
+
+Open **Shared context** on the project overview to save notes, decisions, and evidence for the whole team. Notes persist in the private data directory and accompany plans and task execution. Context changes wait until active project work finishes. Plans include a context revision so a changed bucket requires replanning. A coordinator must report missing essential context before proposing executable tasks, rather than substitute an investigation plan for a requested assessment.
+
+Finished goals show their final outputs under **Results to review**, with **Open result** and **Download** actions. Supporting outputs remain available. “Execution finished” means the tasks returned their outputs; it does not certify that the requested objective was achieved.
+
+For existing SSH/CLI connections, see [read-only source bridges](docs/source-bridges.md). Connection settings, shared notes, and generated results stay outside the repository in the private data directory.
 
 CLI credentials remain in their native credential stores and are reused across app restarts. API keys entered in the UI remain in server memory and are cleared on restart. Alternatively configure `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY` in the server environment; those reload on restart. Never commit credentials. API disconnect removes the running process's key. Hosted workspaces use API connections only; local CLI execution is unavailable there. Existing explicit API assignments remain unchanged.
 

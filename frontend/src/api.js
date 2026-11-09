@@ -87,6 +87,14 @@ export class ApiClient {
   projectFiles(projectId) {
     return this.send(`/api/projects/${encodeURIComponent(projectId)}/files`);
   }
+  /** Read the durable notes shared with this project's plans and task context. */
+  projectContext(projectId) {
+    return this.send(`/api/projects/${encodeURIComponent(projectId)}/context`);
+  }
+  /** Save one shared note and return the server-confirmed project context. */
+  addProjectContext(projectId, note) {
+    return this.send(`/api/projects/${encodeURIComponent(projectId)}/context`, note);
+  }
   /** Ask a project's coordinator to propose tasks without executing the plan. */
   planGoal(projectId, goal) {
     return this.send(`/api/projects/${encodeURIComponent(projectId)}/plan`, goal);

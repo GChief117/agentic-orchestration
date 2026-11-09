@@ -60,6 +60,12 @@ class PlanningTests(unittest.TestCase):
         self.project_id = self.engine.create_project(definition)
         self.plan = {
             "summary": "The builder drafts the report and the reviewer checks it.",
+            "readiness": {
+                "status": "ready",
+                "reason": "The goal provides sufficient detail for the requested draft.",
+                "missing_context": [],
+                "requires_source_context": False,
+            },
             "tasks": [
                 {
                     "id": "draft",
@@ -131,6 +137,65 @@ class PlanningTests(unittest.TestCase):
         )
         self.assertEqual(self.engine.snapshot()["tasks"], [])
 
+    def test_missing_evidence_stops_instead_of_substituting_a_methodology(self):
+        self.plan["readiness"] = {
+            "status": "needs_context",
+            "reason": "The repository has not been supplied for the stack assessment.",
+            "missing_context": ["Repository documentation and dependency manifests"],
+            "requires_source_context": True,
+        }
+        self.plan["tasks"] = []
+        self.model.result = self.response()
+        with self.assertRaisesRegex(ValueError, "Repository documentation"):
+            propose_goal(
+                self.engine, self.project_id, "Assess the project's tech stack"
+            )
+        self.assertEqual(self.engine.snapshot()["tasks"], [])
+        system = self.model.calls[0][0][2]
+        self.assertIn("never replace a requested assessment", system)
+        self.assertIn("complete requested deliverable", system)
+
+    def test_source_dependent_plan_cannot_claim_ready_with_no_selected_sources(self):
+        self.plan["readiness"]["requires_source_context"] = True
+        self.model.result = self.response()
+        with self.assertRaisesRegex(ValueError, "Select the project source files"):
+            propose_goal(
+                self.engine, self.project_id, "Assess the project's tech stack"
+            )
+        self.assertEqual(self.engine.snapshot()["goals"], [])
+
+    def test_general_writing_can_be_ready_without_project_source_files(self):
+        result = propose_goal(
+            self.engine, self.project_id, "Draft a friendly welcome note"
+        )
+        self.assertEqual(result["readiness"]["status"], "ready")
+        self.assertFalse(result["readiness"]["requires_source_context"])
+        self.assertTrue(result["tasks"])
+
+    def test_readiness_is_required_and_cannot_hide_missing_context(self):
+        invalid = [
+            None,
+            {},
+            {**self.plan["readiness"], "requires_source_context": "false"},
+        ]
+        invalid.append({**self.plan["readiness"], "status": "unknown"})
+        for readiness in invalid:
+            with self.subTest(readiness=readiness):
+                self.plan["readiness"] = readiness
+                self.model.result = self.response()
+                with self.assertRaises(ValueError):
+                    propose_goal(self.engine, self.project_id, "Write a report")
+        self.plan["readiness"] = {
+            "status": "ready",
+            "reason": "The data is unavailable.",
+            "missing_context": ["The requested dataset"],
+            "requires_source_context": False,
+        }
+        self.model.result = self.response()
+        with self.assertRaisesRegex(ValueError, "requested dataset"):
+            propose_goal(self.engine, self.project_id, "Summarize the dataset")
+        self.assertEqual(self.engine.snapshot()["tasks"], [])
+
     def test_cli_planning_uses_native_output_and_saved_agent_speed(self):
         with self.engine.store.db:
             self.engine.store.db.execute(
@@ -160,6 +225,8 @@ class PlanningTests(unittest.TestCase):
                 "INSERT INTO project_sources VALUES(?,?,?)",
                 (self.project_id, str(root), "[]"),
             )
+        self.plan["readiness"]["requires_source_context"] = True
+        self.model.result = self.response()
         result = propose_goal(
             self.engine,
             self.project_id,

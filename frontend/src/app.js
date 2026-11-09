@@ -1,9 +1,10 @@
 import { initializeAppearance, openAppearanceForm } from "./appearance.js";
 import { openImportForm } from "./import-form.js";
 import { openModelConnections } from "./model-connections.js";
+import { openContextForm } from "./context-form.js";
 import { openTeamForm } from "./team-form.js";
 import { projectView } from "./domain.js";
-import { openGoalForm, openProjectForm, openTaskDetails } from "./forms.js";
+import { openGoalForm, openProjectForm, openTaskDetails, downloadTaskArtifact } from "./forms.js";
 import { renderWorkspace } from "./views.js";
 
 /**
@@ -44,6 +45,16 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
    */
   function render() {
     if (!snapshot || stopped) return;
+    const openPreviews = new Set(
+      [...root.querySelectorAll("details[data-activity-preview][open]")].map(
+        (preview) => preview.dataset.activityPreview,
+      ),
+    );
+    const openResults = new Set(
+      [...root.querySelectorAll("details[data-goal-results][open]")].map(
+        (results) => results.dataset.goalResults,
+      ),
+    );
     const focused = root.contains(document.activeElement)
       ? document.activeElement
       : null;
@@ -59,6 +70,10 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
       workspaceTab,
       brandStyle: document.documentElement.dataset.brandStyle,
     });
+    for (const preview of root.querySelectorAll("details[data-activity-preview]"))
+      preview.open = openPreviews.has(preview.dataset.activityPreview);
+    for (const results of root.querySelectorAll("details[data-goal-results]"))
+      results.open = openResults.has(results.dataset.goalResults);
     document.getElementById("connection-status").textContent =
       `${snapshot.features?.local_tools === false ? "Hosted" : "Local"} · connected`;
     document.getElementById("last-updated").textContent =
@@ -200,7 +215,7 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
    */
   async function click(event) {
     const button = event.target.closest(
-      "[data-action], [data-project], [data-cancel], [data-inspect], [data-org-agent]",
+      "[data-action], [data-project], [data-cancel], [data-inspect], [data-download-artifact], [data-org-agent]",
     );
     if (!button || !root.contains(button)) return;
     event.preventDefault();
@@ -211,6 +226,15 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
         selectedProject = button.dataset.project;
         tab = "overview";
         render();
+      } else if (button.dataset.downloadArtifact) {
+        const task = snapshot.tasks.find((item) => item.id === button.dataset.downloadArtifact);
+        if (task) {
+          button.disabled = true;
+          try {
+            await downloadTaskArtifact(document, task, api);
+            notify("Result download requested.");
+          } finally { button.disabled = false; }
+        }
       } else if (button.dataset.inspect) {
         const task = snapshot.tasks.find(
           (item) => item.id === button.dataset.inspect,
@@ -241,6 +265,10 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
       } else if (button.dataset.action === "new-project") createProject();
       else if (button.dataset.action === "new-goal") createGoal();
       else if (button.dataset.action === "edit-team") editTeam();
+      else if (button.dataset.action === "shared-context") {
+        const view = projectView(snapshot, selectedProject);
+        if (view) dialog = openContextForm(document, view.project, api);
+      }
       else if (button.dataset.action === "import-projects") importProjects();
       else if (button.dataset.action === "appearance")
         dialog = openAppearanceForm(document);

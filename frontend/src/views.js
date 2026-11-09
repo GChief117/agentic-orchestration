@@ -30,15 +30,171 @@ const empty = (title, body) =>
  * Map a backend state to escaped label markup and a fixed status style.
  * @returns {string} Accessible status badge markup.
  */
-export function badge(state) {
+export function badge(state, label = null) {
   const status = STATUSES[state] || { label: state, tone: "neutral" };
-  return `<span class="status ${status.tone}"><span></span>${e(status.label)}</span>`;
+  return `<span class="status ${status.tone}"><span></span>${e(label || status.label)}</span>`;
 }
 /**
  * Render an unordered list with every supplied item escaped as text.
  */
 function bulletList(items) {
   return `<ul class="plain-list">${items.map((item) => `<li>${e(item)}</li>`).join("")}</ul>`;
+}
+
+/** Format approximate durations without implying second-by-second precision. */
+export function durationLabel(seconds) {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0)
+    return null;
+  if (seconds < 60) return "under 1 min";
+  const minutes = Math.ceil(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  if (!hours) return `${minutes} min`;
+  return `${hours} hr${remainder ? ` ${remainder} min` : ""}`;
+}
+
+/** Format recorded execution time at second precision, independent of forecast rounding. */
+export function elapsedLabel(seconds) {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0)
+    return null;
+  const total = Math.round(seconds);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const remainder = total % 60;
+  const parts = [];
+  if (hours) parts.push(`${hours} hr`);
+  if (minutes) parts.push(`${minutes} min`);
+  if (remainder || !parts.length) parts.push(`${remainder} sec`);
+  return parts.join(" ");
+}
+
+/** Format one estimated completion window, preserving an unknown estimate as unknown. */
+function remainingWindow(timing) {
+  const low = durationLabel(timing.remaining_low_seconds);
+  const high = durationLabel(timing.remaining_high_seconds);
+  const typical = durationLabel(timing.remaining_seconds);
+  const upperBound = high === "under 1 min" ? "Under 1 min" : `Up to ${high}`;
+  if (timing.basis === "execution_limit" && high) return upperBound;
+  if (low && high && timing.remaining_low_seconds <= timing.remaining_high_seconds) {
+    if (low === high) return low === "under 1 min" ? "Under 1 min" : `About ${high}`;
+    if (timing.remaining_low_seconds < 60) return `Up to ${high}`;
+    return `About ${low}–${high}`;
+  }
+  if (typical) return typical === "under 1 min" ? "Under 1 min" : `About ${typical}`;
+  return high ? upperBound : "ETA unavailable";
+}
+
+/** Show per-task elapsed time and expected finish/start without hiding uncertainty. */
+export function renderTaskTiming(timing, { state = "queued", preview = false } = {}) {
+  if (!timing || typeof timing !== "object") return "";
+  const elapsed = elapsedLabel(timing.elapsed_seconds);
+  const terminal = ["accepted", "failed", "cancelled", "blocked"].includes(state);
+  if (terminal || state === "cancelling")
+    return elapsed ? `<span class="task-timing">${terminal ? "Duration" : "Elapsed"}: ${e(elapsed)}</span>` : "";
+  const parts = [];
+  if (!preview && state === "running" && elapsed) parts.push(`Elapsed: ${elapsed}`);
+  const label = timing.basis === "execution_limit" ? "Initial allowance" : preview ? "Proposed task estimate" : "Estimated finish in";
+  parts.push(`${label}: ${remainingWindow(timing)}`);
+  if ((preview || state === "queued") && typeof timing.starts_in_seconds === "number" && timing.starts_in_seconds > 0) {
+    const start = durationLabel(timing.starts_in_seconds);
+    if (start) parts.push(`Estimated start in ${start}`);
+  }
+  return `<span class="task-timing">${e(parts.join(" · "))}</span>`;
+}
+
+/** Render a goal's measured elapsed time and clearly qualified remaining estimate. */
+export function renderGoalTiming(timing, { state = "queued", preview = false } = {}) {
+  if (!timing || typeof timing !== "object") return "";
+  const finite = (number) => typeof number === "number" && Number.isFinite(number) && number >= 0;
+  const terminal = ["accepted", "failed", "cancelled", "blocked"].includes(state);
+  const stopping = state === "cancelling";
+  const cells = [];
+  const count = (number) => finite(number) ? Math.floor(number) : 0;
+  const elapsed = elapsedLabel(timing.elapsed_seconds);
+  if (!preview && elapsed)
+    cells.push(`<div><span class="label">${terminal ? "Total elapsed" : "Elapsed"}</span><strong>${e(elapsed)}</strong></div>`);
+  if (terminal || stopping) {
+    return cells.length ? `<section class="goal-timing" aria-label="Goal timing">${cells.join("")}${stopping ? '<p class="goal-timing-detail">Stopping remaining work.</p>' : ""}</section>` : "";
+  }
+
+  const allowance = timing.basis === "execution_limit";
+  const remaining = remainingWindow(timing);
+  const label = allowance ? "Initial time allowance" : preview ? "Proposed-plan estimate" : "Estimated remaining";
+  cells.push(`<div><span class="label">${label}</span><strong>${e(remaining)}</strong></div>`);
+
+  if (!allowance && finite(timing.eta_at) && timing.eta_at > 0) {
+    const finish = new Date(timing.eta_at * 1000);
+    if (Number.isFinite(finish.getTime())) {
+      const clock = finish.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      cells.push(`<div><span class="label">Estimated finish</span><time datetime="${finish.toISOString()}">Around ${e(clock)}</time></div>`);
+    }
+  }
+  const confidence = { low: "Low confidence", medium: "Medium confidence", high: "High confidence" }[timing.confidence];
+  const samples = count(timing.sample_count);
+  let explanation = allowance
+    ? "No duration history yet; allowance uses execution limits. Actual completion may be sooner."
+    : samples ? `Based on ${samples} completed ${samples === 1 ? "task" : "tasks"}.` : "Timing will update as execution data becomes available.";
+  if (confidence) explanation = `${confidence}. ${explanation}`;
+  if (preview) explanation += " This estimate is for the proposed plan; edits may change its duration.";
+  else explanation = `${count(timing.active_tasks)} running · ${count(timing.waiting_tasks)} waiting. ${explanation}`;
+  return `<section class="goal-timing" aria-label="${preview ? "Plan timing" : "Goal timing"}">${cells.join("")}<p class="goal-timing-detail">${e(explanation)}</p></section>`;
+}
+
+/** Render visible progress reported by active executors, never hidden model reasoning. */
+function liveActivity(tasks, agents) {
+  const active = tasks.filter((task) => ["running", "cancelling"].includes(task.state));
+  if (!active.length) return "";
+  return `<section class="goal-activity" aria-label="Live agent activity"><h4>Live agent activity</h4>${active.map((task) => {
+    const activity = task.activity || {};
+    const agent = agents.get(task.agent_id);
+    const message = activity.message || (task.state === "cancelling" ? "Stopping this task." : "Running the assigned task.");
+    const model = activity.model || agent?.model;
+    const provider = activity.provider || agent?.provider;
+    const modelLabel = task.capability === "model.generate" && model
+      ? [provider, model === "default" ? "CLI default model" : model].filter(Boolean).join(" · ")
+      : "";
+    return `<article class="agent-activity"><div><span class="activity-indicator" aria-hidden="true"></span><strong>${e(agent?.name || "Assigned agent")}</strong><span>${e(task.title)}</span></div>${modelLabel ? `<p class="activity-model">Model: ${e(modelLabel)}</p>` : ""}<p>${e(message)}</p>${activity.preview ? `<details data-activity-preview="${e(task.id)}"><summary>Current response</summary><pre>${e(activity.preview)}</pre></details>` : ""}</article>`;
+  }).join("")}</section>`;
+}
+
+/** Render one task row with measured timing and a restrained running-state indicator. */
+function taskRow(task, agents) {
+  const running = ["running", "cancelling"].includes(task.state);
+  return `<button class="task-row ${running ? "is-running" : ""}" data-inspect="${e(task.id)}"><span class="task-symbol ${task.state === "accepted" ? "done" : ""}">${task.state === "accepted" ? "✓" : "·"}</span><span class="task-title"><strong>${e(task.title)}</strong><small>${e(agents.get(task.agent_id)?.name || "Unassigned")} <b>·</b> ${e(ACTIONS[task.capability]?.short || task.capability)}${task.dependencies.length ? ` <b>·</b> ${task.dependencies.length} dependencies` : ""}</small>${renderTaskTiming(task.timing, { state: task.state })}</span>${badge(task.state)}<span class="row-arrow">↗</span></button>`;
+}
+
+/** Group saved outputs by dependency order while retaining every supporting artifact. */
+export function selectGoalArtifacts(tasks) {
+  const artifacts = tasks.filter((task) => typeof task.receipt?.artifact === "string" && task.receipt.artifact);
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  const consumed = new Set();
+  for (const artifact of artifacts) {
+    const queue = [...(artifact.dependencies || [])];
+    const seen = new Set([artifact.id]);
+    while (queue.length) {
+      const id = queue.pop();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      consumed.add(id);
+      queue.push(...(byId.get(id)?.dependencies || []));
+    }
+  }
+  return {
+    primary: artifacts.filter((task) => !consumed.has(task.id)),
+    supporting: artifacts.filter((task) => consumed.has(task.id)),
+  };
+}
+
+/** Put saved goal outputs ahead of execution logs without claiming they satisfy the objective. */
+function goalResults(goal, tasks, agents) {
+  const { primary, supporting } = selectGoalArtifacts(tasks);
+  if (!primary.length && !supporting.length) {
+    return ["accepted", "failed", "cancelled", "blocked"].includes(goal.state)
+      ? '<section class="goal-results"><h4>Results to review</h4><p>No saved file was produced for this goal. Task receipts remain available below.</p></section>'
+      : "";
+  }
+  const result = (task) => `<article class="goal-result"><div><strong>${e(task.title)}</strong><span class="result-filename">${e(task.receipt.artifact)}</span><small>${e(agents.get(task.agent_id)?.name || "Assigned agent")}</small></div><div class="result-actions"><button class="button" data-inspect="${e(task.id)}">Open result</button><button class="text-button" data-download-artifact="${e(task.id)}">Download</button></div></article>`;
+  return `<section class="goal-results" aria-label="Goal results"><h4>Results to review</h4><p>These files were saved by the team. Review their contents against the goal; successful execution alone does not confirm the objective was met.</p>${primary.map(result).join("")}${supporting.length ? `<details class="supporting-results" data-goal-results="${e(goal.id)}"><summary>Supporting results (${supporting.length})</summary>${supporting.map(result).join("")}</details>` : ""}</section>`;
 }
 
 /**
@@ -50,7 +206,7 @@ function metricCards(snapshot) {
     <div class="metric"><span>Projects</span><strong>${m.projects}</strong><small>Independent workspaces</small></div>
     <div class="metric"><span>Assigned agents</span><strong>${m.agents}</strong><small>Persistent team members</small></div>
     <div class="metric"><span>Active executions</span><strong>${m.active}<i> / ${m.capacity}</i></strong><small>Shared execution capacity</small></div>
-    <div class="metric"><span>Verified tasks</span><strong>${m.verified}</strong><small>Acceptance checks passed</small></div>
+    <div class="metric"><span>Finished tasks</span><strong>${m.verified}</strong><small>Execution checks passed</small></div>
   </div>`;
 }
 
@@ -69,7 +225,7 @@ function projectCards(snapshot) {
       const accepted = view.tasks.filter(
         (task) => task.state === "accepted",
       ).length;
-      return `<button class="project-card" data-project="${e(project.id)}"><div class="card-top"><span class="project-mark tint-${index % 4}">${e(project.name.slice(0, 2).toUpperCase())}</span><span class="eyebrow">${project.mode === "existing" ? "Imported" : "Greenfield"}</span></div><h3>${e(project.name)}</h3><p>${e(project.charter.objective)}</p><div class="card-meta"><span>${icon("people")} ${project.team_size} agents</span><span>${project.active_executions} / ${project.max_concurrency} active</span></div><progress value="${accepted}" max="${Math.max(1, view.tasks.length)}" aria-label="${accepted} of ${view.tasks.length} tasks verified"></progress><div class="card-bottom"><span>${accepted} of ${view.tasks.length} tasks verified</span>${icon("arrow")}</div></button>`;
+      return `<button class="project-card" data-project="${e(project.id)}"><div class="card-top"><span class="project-mark tint-${index % 4}">${e(project.name.slice(0, 2).toUpperCase())}</span><span class="eyebrow">${project.mode === "existing" ? "Imported" : "Greenfield"}</span></div><h3>${e(project.name)}</h3><p>${e(project.charter.objective)}</p><div class="card-meta"><span>${icon("people")} ${project.team_size} agents</span><span>${project.active_executions} / ${project.max_concurrency} active</span></div><progress value="${accepted}" max="${Math.max(1, view.tasks.length)}" aria-label="${accepted} of ${view.tasks.length} tasks passed execution checks"></progress><div class="card-bottom"><span>${accepted} of ${view.tasks.length} tasks passed execution checks</span>${icon("arrow")}</div></button>`;
     })
     .join("")}</div>`;
 }
@@ -84,7 +240,7 @@ function goalsView(view) {
   return view.goals
     .map((goal) => {
       const tasks = view.tasks.filter((task) => task.goal_id === goal.id);
-      return `<section class="panel goal-panel"><header class="panel-heading"><div><span class="eyebrow">Goal</span><h3>${e(goal.title)}</h3></div>${badge(goal.state)}</header><div class="task-list">${tasks.map((task) => `<button class="task-row" data-inspect="${e(task.id)}"><span class="task-symbol ${task.state === "accepted" ? "done" : ""}">${task.state === "accepted" ? "✓" : "·"}</span><span class="task-title"><strong>${e(task.title)}</strong><small>${e(agents.get(task.agent_id)?.name || "Unassigned")} <b>·</b> ${e(ACTIONS[task.capability]?.short || task.capability)}${task.dependencies.length ? ` <b>·</b> ${task.dependencies.length} dependencies` : ""}</small></span>${badge(task.state)}<span class="row-arrow">↗</span></button>`).join("")}</div><footer class="goal-footer"><span>${goal.accepted} of ${goal.total} tasks verified</span>${["queued", "running", "cancelling"].includes(goal.state) ? `<button class="text-button danger-text" data-cancel="${e(goal.id)}" ${goal.state === "cancelling" ? "disabled" : ""}>${goal.state === "cancelling" ? "Cancelling…" : "Cancel remaining work"}</button>` : "<span>Results retained</span>"}</footer></section>`;
+      return `<section class="panel goal-panel ${goal.state === "running" ? "is-running" : ""}"><header class="panel-heading"><div><span class="eyebrow">Goal</span><h3>${e(goal.title)}</h3></div>${badge(goal.state, goal.state === "accepted" ? "Execution finished" : null)}</header>${renderGoalTiming(goal.timing, { state: goal.state })}${goalResults(goal, tasks, agents)}${liveActivity(tasks, agents)}<div class="task-list">${tasks.map((task) => taskRow(task, agents)).join("")}</div><footer class="goal-footer"><span>${goal.accepted} of ${goal.total} tasks passed execution checks</span>${["queued", "running", "cancelling"].includes(goal.state) ? `<button class="text-button danger-text" data-cancel="${e(goal.id)}" ${goal.state === "cancelling" ? "disabled" : ""}>${goal.state === "cancelling" ? "Cancelling…" : "Cancel remaining work"}</button>` : "<span>Review saved results above</span>"}</footer></section>`;
     })
     .join("");
 }
@@ -120,7 +276,7 @@ function activityView(snapshot, view = null) {
  */
 function overviewView(snapshot, view) {
   const p = view.project;
-  return `<div class="overview-grid"><section class="panel charter"><div class="panel-heading"><h2>Project charter</h2><span class="chip">${p.mode === "existing" ? "Imported" : "Greenfield"}</span></div><div class="charter-body">${p.source_path ? `<div class="notice"><strong>Local source folder</strong><p>${e(p.source_path)}</p><small>Linked for reference. Tasks run in the isolated workspace.</small></div>` : ""}<span class="label">Objective</span><p class="objective">${e(p.charter.objective)}</p><div class="charter-columns"><div><span class="label">In scope</span>${bulletList(p.charter.scope)}</div><div><span class="label">Success criteria</span>${bulletList(p.charter.success_criteria)}</div></div>${p.charter.constraints.length ? `<span class="label">Constraints</span>${bulletList(p.charter.constraints)}` : ""}</div></section><section class="panel capacity-panel"><h2>Team & capacity</h2><p>Assigned agents and available execution slots are separate.</p><dl><div><dt>Assigned agents</dt><dd>${p.team_size}</dd></div><div><dt>Project concurrency</dt><dd>${p.max_concurrency}</dd></div><div><dt>Currently executing</dt><dd>${p.active_executions}</dd></div><div><dt>Workspace limit</dt><dd>${snapshot.capacity.execution_limit}</dd></div></dl><div class="small-note">Model tasks use each agent’s selected provider. Connect API access before starting model work.</div></section></div><section class="panel organization-panel overview-organization"><div class="panel-heading"><h2>Team organization</h2><button class="text-button" data-action="edit-team">Edit organization ${icon("arrow")}</button></div>${renderOrganizationChart(view.agents, { interactive: true })}</section><div class="section-heading"><h2>Project goals</h2><button class="text-button" data-action="tab" data-tab="work">View all ${icon("arrow")}</button></div>${goalsView(view)}`;
+  return `<div class="overview-grid"><section class="panel charter"><div class="panel-heading"><h2>Project charter</h2><span class="chip">${p.mode === "existing" ? "Imported" : "Greenfield"}</span></div><div class="charter-body">${p.has_source_bridge ? `<div class="notice"><strong>Connected source bridge</strong><p>Project sources are read through the configured bridge. Open Shared context to see its repositories.</p><small>The local output folder is separate from the connected source.</small></div>` : p.source_path ? `<div class="notice"><strong>Local source folder</strong><p>${e(p.source_path)}</p><small>Linked for reference. Tasks run in the isolated workspace.</small></div>` : ""}<span class="label">Objective</span><p class="objective">${e(p.charter.objective)}</p><div class="charter-columns"><div><span class="label">In scope</span>${bulletList(p.charter.scope)}</div><div><span class="label">Success criteria</span>${bulletList(p.charter.success_criteria)}</div></div>${p.charter.constraints.length ? `<span class="label">Constraints</span>${bulletList(p.charter.constraints)}` : ""}</div></section><section class="panel capacity-panel"><h2>Team & capacity</h2><p>Assigned agents and available execution slots are separate.</p><dl><div><dt>Assigned agents</dt><dd>${p.team_size}</dd></div><div><dt>Project concurrency</dt><dd>${p.max_concurrency}</dd></div><div><dt>Currently executing</dt><dd>${p.active_executions}</dd></div><div><dt>Workspace limit</dt><dd>${snapshot.capacity.execution_limit}</dd></div></dl><div class="small-note">Model tasks use each agent’s selected provider. Connect API access before starting model work.</div></section></div><section class="panel shared-context-panel"><div><h2>Shared context</h2><p>Save project notes, evidence, and decisions for the whole team. Saved context is included in new plans and agent tasks.</p></div><button class="button" data-action="shared-context">Open context</button></section><section class="panel organization-panel overview-organization"><div class="panel-heading"><h2>Team organization</h2><button class="text-button" data-action="edit-team">Edit organization ${icon("arrow")}</button></div>${renderOrganizationChart(view.agents, { interactive: true })}</section><div class="section-heading"><h2>Project goals</h2><button class="text-button" data-action="tab" data-tab="work">View all ${icon("arrow")}</button></div>${goalsView(view)}`;
 }
 
 /**

@@ -32,6 +32,166 @@ REFRESH_SECONDS = 2
 MODEL_REFRESH_SECONDS = 300
 SPEED_MODES = ("standard", "fast", "ultrafast")
 MODEL_CATALOG_REQUEST_ID = "orchestration-model-catalog"
+MAX_PROGRESS_TEXT = 8000
+
+
+class VisibleProgress:
+    """Translate native events into bounded public status and visible response text."""
+
+    def __init__(self, provider, callback):
+        """Keep partial transport lines private until they form a known event."""
+        self.provider = provider
+        self.callback = callback
+        self.pending = bytearray()
+        self.preview = ""
+        self.last_event = None
+
+    def emit(self, phase, message, text=None, *, append=False):
+        """Publish only caller-supplied status labels and allowlisted visible text."""
+        if isinstance(text, str):
+            self.preview = ((self.preview if append else "") + text)[
+                -MAX_PROGRESS_TEXT:
+            ]
+        event = {"phase": phase, "message": message, "preview": self.preview}
+        if event == self.last_event:
+            return
+        self.last_event = event
+        try:
+            self.callback(dict(event))
+        except Exception:
+            pass  # Observability must never interrupt the model's task.
+
+    def feed(self, chunk):
+        """Decode complete stdout JSON lines; diagnostics and unknown data stay private."""
+        self.pending.extend(chunk)
+        if len(self.pending) > MAX_OUTPUT_BYTES:
+            self.pending.clear()
+            return
+        while b"\n" in self.pending:
+            line, _, rest = self.pending.partition(b"\n")
+            self.pending = bytearray(rest)
+            self._line(line)
+
+    def finish(self):
+        """Inspect a final unterminated transport line without publishing raw bytes."""
+        if self.pending:
+            self._line(bytes(self.pending))
+            self.pending.clear()
+
+    def _line(self, line):
+        """Ignore malformed or non-object events instead of exposing raw diagnostics."""
+        try:
+            event = json.loads(line)
+        except (UnicodeError, ValueError, RecursionError):
+            return
+        if not isinstance(event, dict):
+            return
+        if self.provider == "openai":
+            self._codex(event)
+        elif self.provider == "claude":
+            self._claude(event)
+        elif self.provider == "gemini":
+            self._antigravity(event)
+
+    @staticmethod
+    def _assistant_text(message):
+        """Read text blocks only; thinking, tool calls, and other blocks are excluded."""
+        if not isinstance(message, dict) or any(
+            message.get(field) in ("analysis", "reasoning", "thinking")
+            for field in ("channel", "type")
+        ):
+            return None
+        content = message.get("content")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return "".join(
+                block["text"]
+                for block in content
+                if isinstance(block, dict)
+                and block.get("type") == "text"
+                and isinstance(block.get("text"), str)
+            )
+        return None
+
+    def _codex(self, event):
+        """Expose Codex session stages and agent messages, never reasoning items."""
+        kind = event.get("type")
+        if kind == "thread.started":
+            self.emit("starting", "Codex session started")
+        elif kind == "turn.started":
+            self.emit("working", "Working on the assigned task")
+        elif kind in ("item.started", "item.updated", "item.completed"):
+            item = event.get("item")
+            if not isinstance(item, dict):
+                return
+            if (
+                item.get("type") == "agent_message"
+                and item.get("channel") not in ("analysis", "reasoning", "thinking")
+                and isinstance(item.get("text"), str)
+            ):
+                self.emit("writing", "Writing the response", item["text"])
+        elif kind == "turn.completed":
+            self.emit("finalizing", "Checking the completed response")
+
+    def _claude(self, event):
+        """Expose Claude text deltas while discarding thinking and tool-use blocks."""
+        kind = event.get("type")
+        if kind == "system" and event.get("subtype") == "init":
+            self.emit("working", "Claude session started")
+        elif kind == "stream_event":
+            stream = event.get("event")
+            if not isinstance(stream, dict):
+                return
+            if stream.get("type") == "content_block_delta":
+                delta = stream.get("delta")
+                if isinstance(delta, dict) and delta.get("type") == "text_delta":
+                    self.emit(
+                        "writing",
+                        "Writing the response",
+                        delta.get("text"),
+                        append=True,
+                    )
+            elif stream.get("type") == "content_block_start":
+                block = stream.get("content_block")
+                if isinstance(block, dict) and block.get("type") == "text":
+                    self.emit(
+                        "writing",
+                        "Writing the response",
+                        block.get("text"),
+                        append=True,
+                    )
+            elif stream.get("type") == "message_stop":
+                self.emit("finalizing", "Checking the completed response")
+        elif kind == "assistant":
+            visible = self._assistant_text(event.get("message"))
+            if visible:
+                self.emit("writing", "Writing the response", visible)
+        elif kind == "result":
+            if event.get("subtype") == "success" and not event.get("is_error"):
+                self.emit(
+                    "finalizing", "Checking the completed response", event.get("result")
+                )
+
+    def _antigravity(self, event):
+        """Expose known Antigravity assistant text and final responses only."""
+        kind = event.get("event")
+        if kind in ("session_start", "start"):
+            self.emit("working", "Antigravity session started")
+        elif kind == "message":
+            message = event.get("message")
+            if isinstance(message, dict) and message.get("role") == "assistant":
+                visible = self._assistant_text(message)
+                if visible:
+                    self.emit("writing", "Writing the response", visible)
+        elif kind == "result":
+            result = event.get("result")
+            if isinstance(result, dict) and result.get("status") == "SUCCESS":
+                self.emit(
+                    "finalizing",
+                    "Checking the completed response",
+                    result.get("response"),
+                )
 
 
 class CLIRuntime:
@@ -443,6 +603,7 @@ class CLIRuntime:
         *,
         cancelled=None,
         speed="standard",
+        progress=None,
     ):
         """Run a bounded CLI turn, optionally requesting a response token target."""
         info = self._provider(provider)
@@ -458,6 +619,8 @@ class CLIRuntime:
             raise ValueError("CLI instructions and prompt must be text")
         if len((system + prompt).encode()) > 512 * 1024:
             raise ValueError("CLI context exceeds the input size limit")
+        if progress is not None and not callable(progress):
+            raise ValueError("CLI progress callback must be callable")
         binary = shutil.which(info["binary"])
         if not binary:
             raise ValueError(f"Install {info['tool']} before running CLI tasks")
@@ -472,9 +635,27 @@ class CLIRuntime:
             + "\n\n"
             + json.dumps({"instructions": system, "task": prompt}, ensure_ascii=False)
         )
+        visible = VisibleProgress(provider, progress) if progress is not None else None
+        if visible:
+            visible.emit("starting", f"Starting {info['tool']}")
         with tempfile.TemporaryDirectory(prefix="orchestration-cli-turn-") as directory:
-            args, stdin = self._command(provider, binary, model, text, speed=speed)
-            result = self.runner(args, stdin, directory, self.timeout, cancelled)
+            args, stdin = self._command(
+                provider, binary, model, text, speed=speed, stream=visible is not None
+            )
+            if visible:
+                visible.emit("working", "Waiting for the model response")
+            if visible and self.runner is type(self)._run:
+                result = self.runner(
+                    args,
+                    stdin,
+                    directory,
+                    self.timeout,
+                    cancelled,
+                    on_stdout=visible.feed,
+                )
+                visible.finish()
+            else:
+                result = self.runner(args, stdin, directory, self.timeout, cancelled)
         if result.returncode != 0:
             state = self._failure_state(result)
             if state == "signed_out":
@@ -496,6 +677,10 @@ class CLIRuntime:
             output["usage"] = {}
         if not isinstance(output["response_id"], (str, type(None))):
             output["response_id"] = None
+        if visible:
+            visible.emit(
+                "finalizing", "Checking the completed response", output["text"]
+            )
         return output
 
     def validate_speed(self, provider, model, speed):
@@ -512,7 +697,7 @@ class CLIRuntime:
             raise ValueError("The selected CLI model does not advertise this speed")
 
     @staticmethod
-    def _command(provider, binary, model, prompt, *, speed="standard"):
+    def _command(provider, binary, model, prompt, *, speed="standard", stream=False):
         """Construct fixed argv and stdin; no shell or model-supplied commands."""
         model_args = [] if model == "default" else ["--model", model]
         if provider == "openai":
@@ -561,11 +746,11 @@ class CLIRuntime:
                 args.extend(["-c", f"features.{feature}=false"])
             return [*args, *model_args, "-"], prompt.encode()
         if provider == "claude":
-            return [
+            args = [
                 binary,
                 "--print",
                 "--output-format",
-                "json",
+                "stream-json" if stream else "json",
                 "--input-format",
                 "text",
                 "--tools",
@@ -583,7 +768,10 @@ class CLIRuntime:
                 "--safe-mode",
                 "--restricted",
                 *model_args,
-            ], prompt.encode()
+            ]
+            if stream:
+                args.extend(["--verbose", "--include-partial-messages"])
+            return args, prompt.encode()
         settings = {
             "toolPermission": "strict",
             "allowNonWorkspaceAccess": False,
@@ -623,7 +811,18 @@ class CLIRuntime:
     def _parse(provider, stdout):
         """Parse terminal result envelopes, ignoring untrusted diagnostics."""
         if provider == "claude":
-            result = json.loads(stdout)
+            try:
+                result = json.loads(stdout)
+            except json.JSONDecodeError:
+                events = [
+                    json.loads(line) for line in stdout.splitlines() if line.strip()
+                ]
+                if any(not isinstance(event, dict) for event in events):
+                    raise ValueError("Claude returned an invalid event")
+                results = [event for event in events if event.get("type") == "result"]
+                if len(results) != 1:
+                    raise ValueError("Claude returned no unique terminal result")
+                result = results[0]
             if not isinstance(result, dict):
                 raise ValueError("The CLI returned an invalid result")
             return {
@@ -701,7 +900,7 @@ class CLIRuntime:
         }
 
     @staticmethod
-    def _run(args, stdin, directory, timeout, cancelled):
+    def _run(args, stdin, directory, timeout, cancelled, *, on_stdout=None):
         """Drain bounded pipes while monitoring timeout and cooperative cancellation."""
         env = os.environ.copy()
         # Local CLI mode uses provider sign-in, rather than a coincidental API-key environment.
@@ -770,6 +969,11 @@ class CLIRuntime:
                                 raise ValueError(
                                     "CLI process output exceeded the size limit"
                                 )
+                            if key.data == "stdout" and on_stdout is not None:
+                                try:
+                                    on_stdout(chunk)
+                                except Exception:
+                                    pass  # Progress consumers cannot break task execution.
                 while process.poll() is None:
                     if cancelled is not None and cancelled.is_set():
                         raise InterruptedError("CLI task cancelled")

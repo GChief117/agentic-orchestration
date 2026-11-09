@@ -14,7 +14,9 @@ class TaskDefinition:
     dependencies: list[int]
 
 
-def parse_tasks(tasks, connection, project_id, agents, *, source_root=None):
+def parse_tasks(
+    tasks, connection, project_id, agents, *, source_root=None, source_validator=None
+):
     """Validate an entire task graph and return normalized TaskDefinition records.
 
     Require project-owned agents, allowed capabilities, valid dependencies, and
@@ -93,6 +95,7 @@ def parse_tasks(tasks, connection, project_id, agents, *, source_root=None):
                     "An output token limit, when supplied, must be between 1 and 8192"
                 )
             parameters["max_tokens"] = max_tokens
+            parameters["plan_task_id"] = task["id"]
             source_paths = parameters.get("source_files", [])
             if (
                 not isinstance(source_paths, list)
@@ -101,10 +104,13 @@ def parse_tasks(tasks, connection, project_id, agents, *, source_root=None):
                 or len(set(source_paths)) != len(source_paths)
             ):
                 raise ValueError("Choose at most eight distinct source files")
-            if source_paths and not source_root:
+            if source_paths and not source_root and source_validator is None:
                 raise PermissionError("Source files require an imported local project")
-            for relative in source_paths:
-                source_file(source_root, relative)
+            if source_paths and source_validator:
+                source_validator(source_paths)
+            else:
+                for relative in source_paths:
+                    source_file(source_root, relative)
             if source_paths:
                 parameters["source_files"] = source_paths
         # A version-check subprocess has no shared terminal input or file writes.
