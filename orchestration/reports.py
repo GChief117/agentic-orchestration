@@ -158,6 +158,12 @@ def parse_diagram(source):
             label = re.sub(r"<br\s*/?>", "\n", label, flags=re.I).strip('"')
             nodes[match[1]] = _plain(label)
         simple = node_pattern.sub(lambda match: match[1], line)
+        simple = re.sub(
+            r"-\.\s+(.+?)\s+\.->", lambda match: "-.->|" + match[1] + "|", simple
+        )
+        simple = re.sub(
+            r"--\s+([^>|]+?)\s+-->", lambda match: "-->|" + match[1] + "|", simple
+        )
         for match in edge_pattern.finditer(simple):
             first, arrow, label, second = match.groups()
             nodes.setdefault(first, first)
@@ -270,10 +276,14 @@ def _svg_panel(panel, palette):
     return "".join(parts)
 
 
-def _html_report(blocks, title, style):
+def _html_report(blocks, title, style, story=None):
     """Create a self-contained report with print styling and inline vector diagrams."""
     palette = PALETTES[style]
     body = []
+    if story:
+        from .report_story import story_html
+
+        body.extend([story_html(story), "<h2>Evidence appendix</h2>"])
     for block_index, (kind, value) in enumerate(blocks):
         if kind == "heading":
             level, text = value
@@ -338,7 +348,7 @@ def _html_report(blocks, title, style):
     ).encode()
 
 
-def _pdf_report(blocks, title, style):
+def _pdf_report(blocks, title, style, story=None):
     """Lay out report text, repeating table headers, and real vector architecture graphics."""
     try:
         import reportlab
@@ -652,7 +662,20 @@ def _pdf_report(blocks, title, style):
         canvas.drawRightString(width - margin, 20, str(document.page))
         canvas.restoreState()
 
-    story = [Cover(), PageBreak()]
+    brief = story
+    if brief:
+        from .report_story import story_flowables
+
+        story = story_flowables(brief, palette, body_width)
+        if not any(
+            kind == "heading"
+            and value[0] > 1
+            and value[1].strip().lower() == "evidence appendix"
+            for kind, value in blocks
+        ):
+            story.append(Paragraph("Evidence appendix", styles["h2"]))
+    else:
+        story = [Cover(), PageBreak()]
     for block_index, (kind, value) in enumerate(blocks):
         if kind == "heading":
             level, text = value
@@ -850,17 +873,26 @@ def _pdf_report(blocks, title, style):
     return output.getvalue()
 
 
-def render_deliverable(markdown, title, format="pdf", style="editorial"):
+def render_deliverable(
+    markdown, title, format="pdf", style="editorial", *, layout="reference"
+):
     """Return a complete binary or text export; never fetch remote assets or run source code."""
     if style not in PALETTES:
         raise ValueError("Choose editorial, ocean, or neon report styling")
     if format not in ("pdf", "html", "markdown"):
         raise ValueError("Choose PDF, HTML, or Markdown for the deliverable")
+    if layout not in ("reference", "visual_story"):
+        raise ValueError("Choose visual story or reference layout")
+    story = None
+    if layout == "visual_story" and format != "markdown":
+        from .report_story import extract_story
+
+        story, markdown = extract_story(markdown)
     blocks = parse_report(markdown)
     if not isinstance(title, str) or not title.strip() or len(title) > 240:
         raise ValueError("A report title of 1–240 characters is required")
     if format == "markdown":
         return markdown.encode()
     if format == "html":
-        return _html_report(blocks, title, style)
-    return _pdf_report(blocks, title, style)
+        return _html_report(blocks, title, style, story)
+    return _pdf_report(blocks, title, style, story)

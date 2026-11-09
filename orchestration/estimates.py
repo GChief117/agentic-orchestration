@@ -62,7 +62,12 @@ def _keys(task, agents):
     receipt = task.get("receipt") or {}
     capability = task.get("capability")
     mode = (
-        receipt.get("execution_mode", agent.get("execution_mode", "api"))
+        receipt.get(
+            "execution_mode",
+            "native_cli"
+            if task.get("research_mode") == "native_cli"
+            else agent.get("execution_mode", "api"),
+        )
         if capability == "model.generate"
         else "local"
     )
@@ -94,6 +99,8 @@ def _history(tasks, agents):
 def _limit(task, agents, cli_timeout, api_timeout):
     """Use configured adapter deadlines only where an execution timeout exists."""
     if task.get("capability") == "model.generate":
+        if task.get("research_mode") == "native_cli":
+            return 300.0
         mode = agents.get(task.get("agent_id"), {}).get("execution_mode", "api")
         value = cli_timeout if mode == "cli" else api_timeout
         return float(value) if _number(value) and value > 0 else None

@@ -23,6 +23,8 @@ from .sources import list_source_files
 from .discovery import ProjectDiscovery, imported_definition
 from .context import ProjectContext
 from .source_bridges import SourceBridges
+from .bridge_agents import BridgeAgentRuntime
+from .bridge_actions import BridgeActions
 from .delivery import (
     DELIVERY_EXTENSIONS,
     DELIVERY_MIME_TYPES,
@@ -67,6 +69,8 @@ class Engine:
         self.connection = LocalConnection(Path(directory) / "artifacts")
         self.context = ProjectContext(directory)
         self.source_bridges = SourceBridges(directory, enabled=allow_source_access)
+        self.research = BridgeAgentRuntime(self.source_bridges) if allow_cli else None
+        self.bridge_actions = BridgeActions(self.source_bridges) if allow_cli else None
         self.allow_source_access = allow_source_access
         self.models = ModelRuntime()
         self.cli = CLIRuntime() if allow_cli else None
@@ -77,6 +81,8 @@ class Engine:
             allow_source_access=allow_source_access,
             on_progress=self._record_activity,
             source_reader=self.read_project_files,
+            research_runtime=self.research,
+            bridge_actions=self.bridge_actions,
         )
         self.store = Store(directory)
         self.providers = ProviderConnections(directory, runtime=self.cli)
@@ -298,6 +304,7 @@ class Engine:
         *,
         allow_cli=True,
         deliverable=None,
+        research_mode="source_context",
     ):
         """Ask a configured chart agent for a reviewable task plan without starting it."""
         with self.lock:
@@ -310,6 +317,7 @@ class Engine:
             source_files,
             allow_cli=allow_cli,
             deliverable=deliverable,
+            research_mode=research_mode,
         )
 
     def submit(
@@ -321,6 +329,7 @@ class Engine:
         allow_cli=True,
         expected_team_revision=None,
         deliverable=None,
+        research_mode="source_context",
     ):
         """Validate and atomically queue a goal in an existing project.
 
@@ -333,6 +342,8 @@ class Engine:
             raise ValueError("Title must contain 1–120 characters")
         presentation = parse_deliverable(deliverable)
         require_renderer(presentation)
+        if research_mode not in ("source_context", "native_cli"):
+            raise ValueError("Choose supplied context or native workspace research")
         with self.lock:
             self._require_open()
             project = self.store.project(project_id)
@@ -362,8 +373,28 @@ class Engine:
             )
             by_id = {agent["id"]: agent for agent in team}
             for task in definitions:
+                if task.capability.startswith("bridge.") and (
+                    self.bridge_actions is None
+                    or not self.bridge_actions.ready(project_id, task.capability)
+                ):
+                    raise ValueError(
+                        "This project is not connected to the requested workspace capability"
+                    )
                 if task.capability == "model.generate":
                     agent = by_id[task.agent_id]
+                    if research_mode == "native_cli":
+                        if (
+                            not allow_cli
+                            or agent.get("execution_mode") != "cli"
+                            or self.research is None
+                            or not self.research.ready(
+                                project_id, agent.get("provider")
+                            )
+                        ):
+                            raise ValueError(
+                                "Native workspace research requires a connected Codex research capability for every assigned model agent"
+                            )
+                        continue
                     if agent.get("execution_mode", "api") == "cli":
                         if self.cli is None or not allow_cli:
                             raise PermissionError(
@@ -389,6 +420,7 @@ class Engine:
                     definitions,
                     "local-workspace",
                     presentation if deliverable is not None else None,
+                    research_mode,
                 )
         return goal_id
 
@@ -476,6 +508,14 @@ class Engine:
                     task,
                     context={
                         "project": projects[task["project_id"]],
+                        "project_definition": self._team_definition(
+                            projects[task["project_id"]],
+                            [
+                                a
+                                for a in state["agents"]
+                                if a["project_id"] == task["project_id"]
+                            ],
+                        ),
                         "goal": self.store.goal(task["goal_id"]),
                         "shared_context": self.context.read(task["project_id"]),
                         "agent": agents[task["agent_id"]],
@@ -554,6 +594,8 @@ class Engine:
                 "operation_id": attempt_id,
                 "accepted": False,
             }
+            if getattr(exc, "research", None):
+                receipt["research"] = exc.research
         with self.lock:
             if cancelled.is_set():
                 state = "cancelled"
@@ -567,6 +609,40 @@ class Engine:
         finally:
             with self.lock:
                 self.threads.pop(task["id"], None)
+
+    @staticmethod
+    def _team_definition(project, agents):
+        """Export the saved chart for a connected demo without private account state."""
+        keys = {agent["id"]: agent["key"] for agent in agents}
+        fields = (
+            "key",
+            "name",
+            "role",
+            "instructions",
+            "responsibilities",
+            "capabilities",
+            "max_concurrency",
+            "provider",
+            "model",
+            "collaborators",
+            "execution_mode",
+            "execution_speed",
+        )
+        return {
+            "name": project["name"],
+            "team_size": len(agents),
+            "mode": project["mode"],
+            "charter": project["charter"],
+            "max_concurrency": project["max_concurrency"],
+            "team_model": project.get("team_model"),
+            "agents": [
+                {
+                    **{field: agent.get(field) for field in fields},
+                    "reports_to": keys.get(agent.get("reports_to")),
+                }
+                for agent in agents
+            ],
+        }
 
     def export_goal(self, goal_id, deliverable=None, *, automatic=False):
         """Render finished source artifacts into the requested format outside the lock.
@@ -639,8 +715,16 @@ class Engine:
                 renderer = render_deliverable
             else:
                 renderer = self.deliverable_renderer
-            result = renderer(
-                "\n\n".join(parts), goal["title"], settings["format"], settings["style"]
+            arguments = (
+                "\n\n".join(parts),
+                goal["title"],
+                settings["format"],
+                settings["style"],
+            )
+            result = (
+                renderer(*arguments, layout="visual_story")
+                if settings.get("layout") == "visual_story"
+                else renderer(*arguments)
             )
             if (
                 not isinstance(result, bytes)
@@ -729,8 +813,15 @@ class Engine:
                 state=goal_state(task["state"] for task in members),
             )
             goal["deliverable"] = parse_deliverable(goal.get("deliverable"))
+        research_modes = {
+            goal["id"]: goal.get("research_mode", "source_context")
+            for goal in snapshot["goals"]
+        }
         for task in snapshot["tasks"]:
             task["activity"] = activity.get(task["id"])
+            task["research_mode"] = research_modes.get(
+                task["goal_id"], "source_context"
+            )
         for agent in snapshot["agents"]:
             agent["active_executions"] = sum(
                 task["agent_id"] == agent["id"]
@@ -740,6 +831,22 @@ class Engine:
             agent["state"] = "busy" if agent["active_executions"] else "idle"
         for project in snapshot["projects"]:
             project["has_source_bridge"] = self.source_bridges.configured(project["id"])
+            project["workspace_capabilities"] = [
+                capability
+                for capability in ("bridge.notes.create", "bridge.demo.launch")
+                if self.bridge_actions
+                and self.bridge_actions.ready(project["id"], capability)
+            ]
+            research_available = bool(
+                self.research and self.research.ready(project["id"], "openai")
+            )
+            project["research"] = {
+                "available": research_available,
+                "provider": "openai",
+                "name": "Native Codex research through the connected workspace",
+                "skills": ["pio-map-codebase"],
+                "mode": "bridge",
+            }
             project["team_size"] = sum(
                 agent["project_id"] == project["id"] for agent in snapshot["agents"]
             )

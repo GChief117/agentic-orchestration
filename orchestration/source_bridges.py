@@ -206,7 +206,9 @@ class SourceBridges:
         if (
             not isinstance(entry, dict)
             or not required <= set(entry)
-            or set(entry) - required - {"name"}
+            or set(entry)
+            - required
+            - {"name", "agent_command", "demo_directory", "notes_enabled"}
         ):
             raise ValueError("Source bridge target has invalid configuration fields")
         entry = dict(entry)
@@ -257,6 +259,37 @@ class SourceBridges:
             or len(entry["name"]) > 120
         ):
             raise ValueError("Source bridge name must be short text")
+        if "agent_command" in entry:
+            agent_command = entry["agent_command"]
+            if (
+                not isinstance(agent_command, str)
+                or not Path(agent_command).is_absolute()
+            ):
+                raise ValueError(
+                    "Native agent command must be an absolute executable path"
+                )
+            agent_path = Path(agent_command)
+            if (
+                not agent_path.is_file()
+                or agent_path.resolve() != agent_path
+                or not os.access(agent_path, os.X_OK)
+            ):
+                raise ValueError(
+                    "Native agent command must be a canonical executable file"
+                )
+        if "notes_enabled" in entry and type(entry["notes_enabled"]) is not bool:
+            raise ValueError("Notes capability must be explicitly enabled or disabled")
+        if "demo_directory" in entry:
+            demo = entry["demo_directory"]
+            if (
+                not isinstance(demo, str)
+                or str(PurePosixPath(demo)) != demo
+                or PurePosixPath(demo).parent != PurePosixPath(root)
+                or PurePosixPath(demo).name in repositories
+            ):
+                raise ValueError(
+                    "The demo directory must be a separate folder directly inside the configured root"
+                )
         return entry
 
     def configured(self, project_id):

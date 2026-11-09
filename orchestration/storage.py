@@ -82,7 +82,7 @@ class Store:
         """
         )
         for table, additions in {
-            "goals": ("project_id", "deliverable", "delivery"),
+            "goals": ("project_id", "deliverable", "delivery", "research_mode"),
             "tasks": ("project_id", "agent_id"),
             "attempts": ("project_id", "agent_id"),
         }.items():
@@ -261,7 +261,15 @@ class Store:
             (time.time(), task_id, message),
         )
 
-    def create_goal(self, project_id, title, definitions, target, deliverable=None):
+    def create_goal(
+        self,
+        project_id,
+        title,
+        definitions,
+        target,
+        deliverable=None,
+        research_mode="source_context",
+    ):
         """Stage a goal and normalized tasks, returning the generated goal ID.
 
         Link each task to its project and agent; translate plan-local dependency
@@ -270,13 +278,14 @@ class Store:
         goal_id = uuid.uuid4().hex
         identifiers = [uuid.uuid4().hex for _ in definitions]
         self.db.execute(
-            "INSERT INTO goals(id,title,created,project_id,deliverable) VALUES(?,?,?,?,?)",
+            "INSERT INTO goals(id,title,created,project_id,deliverable,research_mode) VALUES(?,?,?,?,?,?)",
             (
                 goal_id,
                 title,
                 time.time(),
                 project_id,
                 json.dumps(deliverable) if deliverable else None,
+                research_mode,
             ),
         )
         for index, definition in enumerate(definitions):

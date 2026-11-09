@@ -9,6 +9,8 @@ class LocalConnection:
         "files.inspect",
         "terminal.python_version",
         "model.generate",
+        "bridge.notes.create",
+        "bridge.demo.launch",
     )
 
     def __init__(self, workspace):

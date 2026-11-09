@@ -128,6 +128,23 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual(after["delivery"], before["delivery"])
         self.assertIn(b"Evidence", self.engine.read_deliverable(goal)[0])
 
+    def test_visual_story_layout_is_persisted_and_passed_to_renderer(self):
+        calls = []
+
+        def story_renderer(text, title, format, style, *, layout):
+            calls.append((format, style, layout))
+            return b"<html>Visual story</html>"
+
+        self.engine.deliverable_renderer = story_renderer
+        goal = self.submit(
+            {"format": "html", "style": "ocean", "layout": "visual_story"}
+        )
+        current = self.finish(goal, True)
+        self.assertEqual(current["delivery"]["state"], "ready")
+        self.assertEqual(current["deliverable"]["layout"], "visual_story")
+        self.assertEqual(current["delivery"]["layout"], "visual_story")
+        self.assertEqual(calls, [("html", "ocean", "visual_story")])
+
     def test_render_failure_is_not_a_ready_pdf_and_can_retry(self):
         goal = self.submit()
         self.finish(goal)
@@ -165,6 +182,7 @@ class DeliveryTests(unittest.TestCase):
         for invalid in (
             {"format": "exe"},
             {"style": "unknown"},
+            {"layout": "unknown"},
             {"path": "../../escape"},
             [],
         ):

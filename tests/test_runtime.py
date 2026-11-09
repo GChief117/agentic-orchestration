@@ -393,6 +393,7 @@ class HTTPTests(unittest.TestCase):
                 [],
                 allow_cli=True,
                 deliverable={"format": "html", "style": "ocean"},
+                research_mode="source_context",
             )
         self.assertEqual(self.engine.snapshot()["tasks"], [])
 

@@ -1,6 +1,7 @@
 import {
   ACTIONS,
   DELIVERABLE_FORMATS,
+  DELIVERABLE_LAYOUTS,
   DELIVERABLE_STYLES,
   escapeHtml as e,
   goalPayload,
@@ -50,7 +51,8 @@ export function openGoalForm(
   let planSummary = "";
   let planTiming = null;
   let teamRevision = null;
-  let deliverable = { format: "pdf", style: "editorial" };
+  let deliverable = { format: "pdf", style: "editorial", layout: "visual_story" };
+  let researchMode = view.project.research?.available ? "native_cli" : "source_context";
   const goalSources = { source_files: [], source_filter: "" };
   /**
    * Create a task draft with a stable local ID and the first available agent/action.
@@ -64,6 +66,8 @@ export function openGoalForm(
       capability: agent.capabilities[0],
       path: "",
       content: "",
+      note_title: "",
+      port: "8765",
       expected: "",
       prompt: "",
       source_files: [],
@@ -81,18 +85,33 @@ export function openGoalForm(
     title = value(content, "goal-title");
     coordinator = value(content, "coordinator");
     captureDeliverable();
+    captureResearch();
   }
   /** Retain output choices across planning, review, and task-editor rerenders. */
   function captureDeliverable() {
     const format = value(content, "deliverable-format");
     const style = value(content, "deliverable-style");
+    const layout = value(content, "deliverable-layout");
     if (Object.hasOwn(DELIVERABLE_FORMATS, format)) deliverable.format = format;
     if (Object.hasOwn(DELIVERABLE_STYLES, style)) deliverable.style = style;
+    if (Object.hasOwn(DELIVERABLE_LAYOUTS, layout)) deliverable.layout = layout;
+  }
+  /** Keep the research path explicit rather than inferring tool access from a role name. */
+  function captureResearch() {
+    const selected = value(content, "research-mode");
+    if (selected === "source_context" || (selected === "native_cli" && view.project.research?.available)) researchMode = selected;
+  }
+  /** Offer native tools only when the backend reports a usable connected runtime. */
+  function researchFields() {
+    const research = view.project.research;
+    if (!research?.available) return research?.reason ? `<section class="research-preferences"><h3>Research access</h3><p class="muted">${e(research.reason)}</p><p>Agents will use the source context attached to this goal.</p></section>` : "";
+    const skills = Array.isArray(research.skills) ? research.skills.filter((skill) => typeof skill === "string") : [];
+    return `<section class="research-preferences"><h3>Research access</h3><label class="field"><span>How agents research</span><select data-field="research-mode" aria-label="How agents research"><option value="native_cli" ${researchMode === "native_cli" ? "selected" : ""}>Use connected research tools</option><option value="source_context" ${researchMode === "source_context" ? "selected" : ""}>Read selected context only</option></select></label><p class="muted">${e(research.name || "Connected native research")}${skills.length ? ` · ${e(skills.join(", "))}` : ""}. Native research can inspect the connected project and record tool activity. Selected-context mode only uses the supplied text.</p></section>`;
   }
   /** Ask for the actual final file and its visual treatment before starting work. */
   function deliverableFields() {
     const options = (items, selected) => Object.entries(items).map(([key, label]) => `<option value="${key}" ${key === selected ? "selected" : ""}>${label}</option>`).join("");
-    return `<section class="deliverable-preferences"><h3>Final deliverable</h3><div class="form-grid"><label class="field"><span>Desired deliverable</span><select data-field="deliverable-format" aria-label="Desired deliverable">${options(DELIVERABLE_FORMATS, deliverable.format)}</select></label><label class="field"><span>Visual style</span><select data-field="deliverable-style" aria-label="Visual style">${options(DELIVERABLE_STYLES, deliverable.style)}</select></label></div><p class="muted">The team will prepare your final report in this format. Source text remains available for editing.</p></section>`;
+    return `<section class="deliverable-preferences"><h3>Final deliverable</h3><div class="form-grid"><label class="field"><span>Desired deliverable</span><select data-field="deliverable-format" aria-label="Desired deliverable">${options(DELIVERABLE_FORMATS, deliverable.format)}</select></label><label class="field"><span>Visual style</span><select data-field="deliverable-style" aria-label="Visual style">${options(DELIVERABLE_STYLES, deliverable.style)}</select></label><label class="field" data-layout-field ${deliverable.format === "markdown" ? "hidden" : ""}><span>Report structure</span><select data-field="deliverable-layout" aria-label="Report structure">${options(DELIVERABLE_LAYOUTS, deliverable.layout || "visual_story")}</select></label></div><p class="muted">Visual stories explain the technology with icons and a clear narrative, followed by supporting evidence. Source text remains available for editing.</p></section>`;
   }
   /** Use the first line as a concise title when the owner leaves it optional. */
   function suggestedTitle() {
@@ -114,6 +133,9 @@ export function openGoalForm(
       path: task.parameters?.path || "",
       prompt: task.parameters?.prompt || "",
       content: task.parameters?.content || "",
+      note_title: task.parameters?.title || "",
+      content_task: task.parameters?.content_task || "",
+      port: String(task.parameters?.port || "8765"),
       expected: task.parameters?.expected || "",
       max_tokens: task.parameters?.max_tokens == null
         ? ""
@@ -150,6 +172,7 @@ export function openGoalForm(
         coordinator,
         source_files: [...goalSources.source_files],
         deliverable: { ...deliverable },
+        research_mode: researchMode,
       });
       tasks = planDrafts(plan);
       nextId = Math.max(
@@ -159,7 +182,8 @@ export function openGoalForm(
       planSummary = typeof plan.summary === "string" ? plan.summary : "";
       planTiming = plan.timing || null;
       teamRevision = plan.team_revision;
-      if (plan.deliverable && Object.hasOwn(DELIVERABLE_FORMATS, plan.deliverable.format) && Object.hasOwn(DELIVERABLE_STYLES, plan.deliverable.style)) deliverable = { ...plan.deliverable };
+      if (plan.deliverable && Object.hasOwn(DELIVERABLE_FORMATS, plan.deliverable.format) && Object.hasOwn(DELIVERABLE_STYLES, plan.deliverable.style)) deliverable = { ...deliverable, ...plan.deliverable };
+      if (plan.research_mode === "source_context" || (plan.research_mode === "native_cli" && view.project.research?.available)) researchMode = plan.research_mode;
       if (plan.coordinator_key) coordinator = plan.coordinator_key;
       title = title.trim() || suggestedTitle();
       stage = "tasks";
@@ -179,7 +203,7 @@ export function openGoalForm(
   }
   /** Start with the outcome and chart, leaving task details for the review step. */
   function renderGoal() {
-    content.innerHTML = `<form data-goal-intake><div class="dialog-body"><p>Describe the outcome you want. Your coordinator will propose tasks for the team in your organization chart. You review the plan before any task starts.</p>${input("What should your team accomplish?", "goal", goal, { required: true, textarea: true, rows: 6, hint: "Include the result you want and anything the team should consider." })}${input("Goal title (optional)", "goal-title", title)}${deliverableFields()}<label class="field"><span>Planning coordinator</span><select data-field="coordinator" aria-label="Planning coordinator">${planners.map((agent) => `<option value="${e(agent.key)}" ${agent.key === coordinator ? "selected" : ""}>${e(agent.name)} · ${e(agent.role)}</option>`).join("")}</select></label>${!planners.length ? '<div class="notice info">Assign a provider and model to at least one team member in the organization chart before planning.</div>' : ""}<section data-goal-sources>${sourcePicker(goalSources, true)}</section><div class="notice danger hidden" data-error role="alert"></div></div><footer class="dialog-footer"><button class="text-button" type="button" data-manual-goal>Define tasks manually</button><button class="button primary" type="submit" data-label="Plan with coordinator" ${planners.length ? "" : "disabled"}>Plan with coordinator</button></footer></form>`;
+    content.innerHTML = `<form data-goal-intake><div class="dialog-body"><p>Describe the outcome you want. Your coordinator will propose tasks for the team in your organization chart. You review the plan before any task starts.</p>${input("What should your team accomplish?", "goal", goal, { required: true, textarea: true, rows: 6, hint: "Include the result you want and anything the team should consider." })}${input("Goal title (optional)", "goal-title", title)}${deliverableFields()}${researchFields()}<label class="field"><span>Planning coordinator</span><select data-field="coordinator" aria-label="Planning coordinator">${planners.map((agent) => `<option value="${e(agent.key)}" ${agent.key === coordinator ? "selected" : ""}>${e(agent.name)} · ${e(agent.role)}</option>`).join("")}</select></label>${!planners.length ? '<div class="notice info">Assign a provider and model to at least one team member in the organization chart before planning.</div>' : ""}<section data-goal-sources>${sourcePicker(goalSources, true)}</section><div class="notice danger hidden" data-error role="alert"></div></div><footer class="dialog-footer"><button class="text-button" type="button" data-manual-goal>Define tasks manually</button><button class="button primary" type="submit" data-label="Plan with coordinator" ${planners.length ? "" : "disabled"}>Plan with coordinator</button></footer></form>`;
     content.querySelector("form").onsubmit = requestPlan;
     content.querySelector("[data-manual-goal]").onclick = () => {
       captureGoal();
@@ -210,6 +234,7 @@ export function openGoalForm(
   function read() {
     title = value(content, "goal-title");
     captureDeliverable();
+    captureResearch();
     return [...content.querySelectorAll("[data-task]")].map((row) => {
       const task = {
         id: row.dataset.task,
@@ -220,10 +245,12 @@ export function openGoalForm(
             "capability",
             "path",
             "content",
+            "note_title",
+            "port",
             "expected",
             "prompt",
             "max_tokens",
-          ].map((field) => [field, value(row, field)]),
+          ].map((field) => [field, row.querySelector(`[data-field="${field}"]`) ? value(row, field) : tasks.find((task) => task.id === row.dataset.task)?.[field] || ""]),
         ),
         source_files: [
           ...(tasks.find((task) => task.id === row.dataset.task)?.source_files ||
@@ -231,6 +258,8 @@ export function openGoalForm(
         ],
         source_filter:
           tasks.find((task) => task.id === row.dataset.task)?.source_filter || "",
+        content_task:
+          tasks.find((task) => task.id === row.dataset.task)?.content_task || "",
         advanced_open: Boolean(row.querySelector("[data-task-advanced]")?.open),
         compare: Boolean(row.querySelector('[data-field="compare"]')?.checked),
         depends_on: [...row.querySelectorAll("[data-dependency]:checked")].map(
@@ -297,14 +326,14 @@ export function openGoalForm(
    */
   function render() {
     if (stage === "goal") return renderGoal();
-    content.innerHTML = `<form data-goal-form><div class="dialog-body">${planSummary ? `<div class="notice info"><strong>Coordinator’s plan</strong><p>${e(planSummary)}</p><span>Review and adjust the tasks below before starting the goal.</span></div>` : '<div class="notice info">Define the tasks your team should run. Each task follows its dependencies and the settings saved for its assigned agent.</div>'}${renderGoalTiming(planTiming, { preview: true })}${input("Goal title", "goal-title", title, { required: true })}${deliverableFields()}<div class="form-section-heading"><h3>Tasks & dependencies</h3><button class="text-button" type="button" data-example>Use release example</button></div>${tasks
+    content.innerHTML = `<form data-goal-form><div class="dialog-body">${planSummary ? `<div class="notice info"><strong>Coordinator’s plan</strong><p>${e(planSummary)}</p><span>Review and adjust the tasks below before starting the goal.</span></div>` : '<div class="notice info">Define the tasks your team should run. Each task follows its dependencies and the settings saved for its assigned agent.</div>'}${renderGoalTiming(planTiming, { preview: true })}${input("Goal title", "goal-title", title, { required: true })}${deliverableFields()}${researchFields()}<div class="form-section-heading"><h3>Tasks & dependencies</h3><button class="text-button" type="button" data-example>Use release example</button></div>${tasks
       .map((task, index) => {
         const agent =
           view.agents.find((item) => item.key === task.agent) || view.agents[0];
         const capabilities = agent.capabilities;
         if (!capabilities.includes(task.capability))
           task.capability = capabilities[0];
-        return `<fieldset class="task-editor" data-task="${e(task.id)}"><legend>Step ${index + 1} · ${e(task.id)}</legend>${renderTaskTiming(planTiming?.task_timings?.[task.id], { preview: true })}${input("Task title", "title", task.title, { required: true })}<div class="form-grid"><label class="field"><span>Assigned agent</span><select aria-label="Assigned agent" data-field="agent">${view.agents.map((candidate) => `<option value="${e(candidate.key)}" ${agent.key === candidate.key ? "selected" : ""}>${e(candidate.name)} · ${e(candidate.role)}</option>`).join("")}</select></label><label class="field"><span>Action</span><select aria-label="Action" data-field="capability">${capabilities.map((cap) => `<option value="${e(cap)}" ${task.capability === cap ? "selected" : ""}>${e(ACTIONS[cap]?.label || cap)}</option>`).join("")}</select></label></div>${task.capability.startsWith("files.") ? input("Project-relative file path", "path", task.path, { required: true, hint: "For example: release/checklist.txt" }) : task.capability === "terminal.python_version" ? '<p class="muted">Checks the configured Python runtime on the local target.</p>' : ""}${task.capability === "model.generate" ? `<p class="muted">${agent.execution_mode === "cli" ? "Local CLI" : "API key"} · ${e(agent.provider || "No provider")} · ${e(agent.model || "No model selected")}</p>${input("Task prompt", "prompt", task.prompt || "", { required: true, textarea: true, rows: 5 })}${sourcePicker(task)}${modelSettings(agent, task)}` : ""}${task.capability === "files.write" ? input("File contents", "content", task.content, { textarea: true }) : ""}${task.capability === "files.inspect" ? `<label class="checkbox-line"><input type="checkbox" data-field="compare" ${task.compare ? "checked" : ""}> Compare exact contents</label>${task.compare ? input("Expected contents", "expected", task.expected, { textarea: true }) : '<p class="muted">Checks that the file is readable and records its digest.</p>'}` : ""}<div class="dependency-picker"><span class="label">Wait for these tasks to be verified</span>${
+        return `<fieldset class="task-editor" data-task="${e(task.id)}"><legend>Step ${index + 1} · ${e(task.id)}</legend>${renderTaskTiming(planTiming?.task_timings?.[task.id], { preview: true })}${input("Task title", "title", task.title, { required: true })}<div class="form-grid"><label class="field"><span>Assigned agent</span><select aria-label="Assigned agent" data-field="agent">${view.agents.map((candidate) => `<option value="${e(candidate.key)}" ${agent.key === candidate.key ? "selected" : ""}>${e(candidate.name)} · ${e(candidate.role)}</option>`).join("")}</select></label><label class="field"><span>Action</span><select aria-label="Action" data-field="capability">${capabilities.map((cap) => `<option value="${e(cap)}" ${task.capability === cap ? "selected" : ""}>${e(ACTIONS[cap]?.label || cap)}</option>`).join("")}</select></label></div>${task.capability.startsWith("files.") ? input("Project-relative file path", "path", task.path, { required: true, hint: "For example: release/checklist.txt" }) : task.capability === "terminal.python_version" ? '<p class="muted">Checks the configured Python runtime on the local target.</p>' : ""}${task.capability === "model.generate" ? `<p class="muted">${agent.execution_mode === "cli" ? "Local CLI" : "API key"} · ${e(agent.provider || "No provider")} · ${e(agent.model || "No model selected")}</p>${input("Task prompt", "prompt", task.prompt || "", { required: true, textarea: true, rows: 5 })}${sourcePicker(task)}${modelSettings(agent, task)}` : ""}${task.capability === "bridge.notes.create" ? `${input("Note title", "note_title", task.note_title || "", { required: true })}${task.content_task ? `<p class="muted">The note uses the completed result from ${e(task.content_task)}.</p>` : input("Note content", "content", task.content || "", { required: true, textarea: true, rows: 5, hint: "Creates a draft in Notes on the connected Mac. It does not send a message." })}` : ""}${task.capability === "bridge.demo.launch" ? input("Demo port", "port", task.port || "8765", { number: true, required: true, hint: "Launches the prepared workspace demo at this loopback port on the connected Mac." }) : ""}${task.capability === "files.write" ? input("File contents", "content", task.content, { textarea: true }) : ""}${task.capability === "files.inspect" ? `<label class="checkbox-line"><input type="checkbox" data-field="compare" ${task.compare ? "checked" : ""}> Compare exact contents</label>${task.compare ? input("Expected contents", "expected", task.expected, { textarea: true }) : '<p class="muted">Checks that the file is readable and records its digest.</p>'}` : ""}<div class="dependency-picker"><span class="label">Wait for these tasks to be verified</span>${
           tasks
             .filter((other) => other.id !== task.id)
             .map(
@@ -368,6 +397,7 @@ export function openGoalForm(
         tasks = read();
         const payload = goalPayload(view.project.id, title, tasks, view.agents);
         payload.deliverable = { ...deliverable };
+        payload.research_mode = researchMode;
         if (teamRevision != null) payload.team_revision = teamRevision;
         controller.busy(true);
         await onSubmit(payload);
@@ -389,6 +419,12 @@ export function openGoalForm(
     row.querySelector("[data-source-options]").innerHTML = sourceOptions(task);
   });
   content.addEventListener("change", (event) => {
+    if (event.target.matches('[data-field="deliverable-format"]')) {
+      captureDeliverable();
+      const field = content.querySelector("[data-layout-field]");
+      if (field) field.hidden = deliverable.format === "markdown";
+      return;
+    }
     if (!event.target.matches("[data-source-file]")) return;
     const row = event.target.closest("[data-task], [data-goal-sources]");
     const task = row.hasAttribute("data-goal-sources")
@@ -478,6 +514,20 @@ export async function downloadGoalDeliverable(document, goal, api) {
   }
 }
 
+/** Show only recorded native research events, separately from the assigned tool method. */
+function researchEvidence(research) {
+  if (!research || typeof research !== "object") return "";
+  const skills = Array.isArray(research.skills) ? research.skills.filter((skill) => typeof skill === "string") : [];
+  const events = Array.isArray(research.tool_events) ? research.tool_events : [];
+  const descriptions = events.map((event) => {
+    if (typeof event === "string") return event;
+    if (!event || typeof event !== "object") return "";
+    if (Array.isArray(event.command)) return event.command.filter((part) => typeof part === "string").join(" ");
+    return event.command || event.title || event.name || event.message || "";
+  }).filter((entry) => typeof entry === "string" && entry);
+  return `<section class="research-evidence" aria-label="Research tools used"><h3>Research tools used</h3><p>${e(research.name || research.mode || "Native CLI research")}${research.provider ? ` · ${e(research.provider)}` : ""}</p>${skills.length ? `<p><strong>Skill guidance:</strong> ${e(skills.join(", "))}</p>` : ""}${descriptions.length ? `<details><summary>Recorded tool activity (${descriptions.length})</summary><ol>${descriptions.map((description) => `<li><code>${e(description)}</code></li>`).join("")}</ol></details>` : '<p class="muted">No tool activity was recorded in this receipt.</p>'}</section>`;
+}
+
 /**
  * Show a saved result first, with execution evidence available in collapsed details.
  * Render result and receipt text without interpreting either as HTML.
@@ -492,7 +542,7 @@ export async function openTaskDetails(document, task, agent, api) {
   const { dialog } = mountDialog(document, task.title, hasArtifact ? "Task result" : "Task evidence");
   dialog.classList.add("evidence-dialog");
   const content = dialog.querySelector("[data-content]");
-  content.innerHTML = `<div class="dialog-body">${hasArtifact ? `<section data-artifact><div class="result-heading"><h3 data-artifact-name>${e(task.receipt.artifact)}</h3><button class="button primary" type="button" data-download-artifact="${e(task.id)}" disabled>Download result</button></div><p class="muted">Review this saved output against the goal and its source evidence.</p><pre data-artifact-content aria-label="Result contents">Loading result…</pre></section>` : ""}<dl class="evidence-meta"><div><dt>Assigned agent</dt><dd>${e(agent?.name || "Unknown")}</dd></div><div><dt>Execution status</dt><dd>${e(task.state === "accepted" ? "Finished" : task.state)}</dd></div><div><dt>Action</dt><dd>${e(ACTIONS[task.capability]?.label || task.capability)}</dd></div></dl>${task.error ? `<div class="notice danger">${e(task.error)}</div>` : ""}<details class="execution-receipt" ${hasArtifact ? "" : "open"}><summary>Execution receipt</summary><pre data-receipt></pre></details><div class="notice danger hidden" data-error role="alert"></div></div>`;
+  content.innerHTML = `<div class="dialog-body">${hasArtifact ? `<section data-artifact><div class="result-heading"><h3 data-artifact-name>${e(task.receipt.artifact)}</h3><button class="button primary" type="button" data-download-artifact="${e(task.id)}" disabled>Download result</button></div><p class="muted">Review this saved output against the goal and its source evidence.</p><pre data-artifact-content aria-label="Result contents">Loading result…</pre></section>` : ""}<dl class="evidence-meta"><div><dt>Assigned agent</dt><dd>${e(agent?.name || "Unknown")}</dd></div><div><dt>Execution status</dt><dd>${e(task.state === "accepted" ? "Finished" : task.state)}</dd></div><div><dt>Action</dt><dd>${e(ACTIONS[task.capability]?.label || task.capability)}</dd></div></dl>${researchEvidence(task.receipt?.research)}${task.error ? `<div class="notice danger">${e(task.error)}</div>` : ""}<details class="execution-receipt" ${hasArtifact ? "" : "open"}><summary>Execution receipt</summary><pre data-receipt></pre></details><div class="notice danger hidden" data-error role="alert"></div></div>`;
   content.querySelector("[data-receipt]").textContent = task.receipt
     ? JSON.stringify(task.receipt, null, 2)
     : "No receipt yet. This task has not completed an execution.";

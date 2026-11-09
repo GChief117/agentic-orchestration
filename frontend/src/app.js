@@ -352,15 +352,20 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
   }
   /** Retain export choices across live polling without altering the saved goal yet. */
   function change(event) {
-    const field = event.target.closest("[data-delivery-format], [data-delivery-style]");
+    const field = event.target.closest("[data-delivery-format], [data-delivery-style], [data-delivery-layout]");
     if (!field || !root.contains(field)) return;
-    const id = field.dataset.deliveryFormat || field.dataset.deliveryStyle;
+    const id = field.dataset.deliveryFormat || field.dataset.deliveryStyle || field.dataset.deliveryLayout;
     const goal = snapshot?.goals.find((item) => item.id === id);
     if (!goal) return;
     const preferences = { ...(deliveryDrafts.get(id) || goal.deliverable || { format: "pdf", style: "editorial" }) };
     if (field.dataset.deliveryFormat) preferences.format = field.value;
-    else preferences.style = field.value;
+    else if (field.dataset.deliveryStyle) preferences.style = field.value;
+    else preferences.layout = field.value;
     deliveryDrafts.set(id, preferences);
+    if (field.dataset.deliveryFormat) {
+      const layout = [...root.querySelectorAll("[data-delivery-layout]")].find((control) => control.dataset.deliveryLayout === id);
+      if (layout) layout.closest(".field").hidden = preferences.format === "markdown";
+    }
   }
   root.addEventListener("click", click);
   root.addEventListener("keydown", chartKey);

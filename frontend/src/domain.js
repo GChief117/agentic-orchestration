@@ -2,6 +2,8 @@
  * Human-readable labels for capabilities supported by the local backend.
  */
 export const ACTIONS = {
+  "bridge.notes.create": { label: "Create a Notes draft on connected Mac", short: "Connected Notes" },
+  "bridge.demo.launch": { label: "Launch the connected workspace demo", short: "Connected demo" },
   "model.generate": { label: "Run model task", short: "Model task" },
   "files.write": { label: "Write a file", short: "File write" },
   "files.inspect": { label: "Inspect a file", short: "File check" },
@@ -23,6 +25,12 @@ export const DELIVERABLE_STYLES = {
   editorial: "Warm editorial",
   ocean: "Ocean blue",
   neon: "Neon blue",
+};
+
+/** Presentation structure; evidence references stay available in either layout. */
+export const DELIVERABLE_LAYOUTS = {
+  visual_story: "Visual story with icons",
+  reference: "Reference report",
 };
 
 /**
@@ -278,6 +286,18 @@ export function goalPayload(projectId, title, drafts, agents) {
       parameters.content = draft.content ?? "";
     if (draft.capability === "files.inspect" && draft.compare)
       parameters.expected = draft.expected ?? "";
+    if (draft.capability === "bridge.notes.create") {
+      parameters.title = required(draft.note_title, "Note title");
+      if (draft.content_task) {
+        if (!draft.depends_on.includes(draft.content_task)) throw new Error("The note's content task must be one of its dependencies.");
+        parameters.content_task = draft.content_task;
+      }
+      else parameters.content = required(draft.content, "Note content");
+    }
+    if (draft.capability === "bridge.demo.launch") {
+      parameters.port = positive(draft.port || "8765", "Demo port");
+      if (parameters.port < 1024 || parameters.port > 65535) throw new Error("Use a demo port from 1024 to 65535.");
+    }
     return {
       id: draft.id,
       title: required(draft.title, "Task title"),

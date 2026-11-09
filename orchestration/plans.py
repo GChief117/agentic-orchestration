@@ -63,6 +63,32 @@ def parse_tasks(
             raise ValueError("Duplicate dependency")
         # Infer canonical resource claims from actual operations, not user-supplied labels.
         resources = []
+        if capability == "bridge.notes.create":
+            if (
+                set(parameters) - {"title", "content", "content_task", "note_id"}
+                or not isinstance(parameters.get("title"), str)
+                or not 1 <= len(parameters["title"]) <= 200
+            ):
+                raise ValueError(
+                    "A Notes draft needs a title and content or a source task"
+                )
+            if parameters.get("content_task"):
+                if parameters["content_task"] not in dependencies:
+                    raise ValueError("The Notes source must be a task dependency")
+            elif (
+                not isinstance(parameters.get("content"), str)
+                or not 1 <= len(parameters["content"]) <= 48000
+            ):
+                raise ValueError("A Notes draft needs bounded text content")
+            resources = [("bridge-notes:" + project_id, "write")]
+        elif capability == "bridge.demo.launch":
+            if (
+                set(parameters) - {"port"}
+                or type(parameters.get("port", 8765)) is not int
+                or not 1024 <= parameters.get("port", 8765) <= 65535
+            ):
+                raise ValueError("Choose a local demo port from 1024 to 65535")
+            resources = [("bridge-demo:" + project_id, "write")]
         if capability in ("files.write", "files.inspect", "model.generate"):
             path = connection.project_path(project_id, parameters.get("path"))
             parameters["path"] = str(path.relative_to(connection.workspace))

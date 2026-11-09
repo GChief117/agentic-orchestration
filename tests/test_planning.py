@@ -37,6 +37,23 @@ class FakeModel:
         return self.result
 
 
+class FakeWorkspaceActions:
+    """Expose local action readiness without providing an execution method."""
+
+    def __init__(self, capabilities):
+        self.capabilities = set(capabilities)
+
+    def ready(self, _project_id, capability):
+        return capability in self.capabilities
+
+
+class FakeNativeModel(FakeModel):
+    """Limit model research to the configured Codex provider in native tests."""
+
+    def ready(self, _project_id, provider):
+        return provider == "openai"
+
+
 class PlanningTests(unittest.TestCase):
     def setUp(self):
         """Create a real chart backed by temporary SQLite and a fake model provider."""
@@ -92,6 +109,27 @@ class PlanningTests(unittest.TestCase):
             "text": json.dumps(self.plan) if text is None else text,
             "complete": complete,
         }
+
+    def workspace_actions(self, *, available=True, native=False):
+        """Give the reviewer bounded workspace capabilities, independent of its model."""
+        capabilities = ["model.generate", "bridge.notes.create", "bridge.demo.launch"]
+        self.engine.bridge_actions = FakeWorkspaceActions(
+            capabilities if available else []
+        )
+        with self.engine.store.db:
+            self.engine.store.db.execute(
+                "UPDATE agents SET capabilities=?,provider=?,model=?,execution_mode=? WHERE key='reviewer'",
+                (
+                    json.dumps(capabilities),
+                    "claude" if native else None,
+                    "opus" if native else None,
+                    "cli" if native else "api",
+                ),
+            )
+            if native:
+                self.engine.store.db.execute(
+                    "UPDATE agents SET execution_mode='cli' WHERE key='coordinator'"
+                )
 
     def test_chart_context_controls_owners_and_plan_does_not_start_tasks(self):
         result = propose_goal(self.engine, self.project_id, "Prepare a report")
@@ -183,7 +221,180 @@ class PlanningTests(unittest.TestCase):
         prompt = json.loads(self.model.calls[0][0][3])
         self.assertEqual(prompt["deliverable"], settings)
         self.assertEqual(result["deliverable"], settings)
+
+    def test_visual_story_brief_is_attached_to_final_tasks(self):
+        settings = {"format": "html", "style": "ocean", "layout": "visual_story"}
+        result = propose_goal(
+            self.engine, self.project_id, "Explain this project", deliverable=settings
+        )
+        system = self.model.calls[0][0][2]
+        self.assertIn("coherent story", system)
+        self.assertIn("fenced block labeled story", system)
+        self.assertIn("inferred, or unknown", system)
+        self.assertNotIn(
+            "fenced block labeled story", result["tasks"][0]["parameters"]["prompt"]
+        )
+        self.assertIn(
+            "fenced block labeled story", result["tasks"][-1]["parameters"]["prompt"]
+        )
+        self.assertEqual(result["deliverable"], settings)
         self.assertIn("flowchart TD", self.model.calls[0][0][2])
+
+    def test_notes_plan_preserves_dependency_and_does_not_need_an_owner_model(self):
+        self.workspace_actions()
+        self.plan["tasks"] = [
+            self.plan["tasks"][0],
+            {
+                "id": "note",
+                "title": "Create the requested Notes draft",
+                "agent": "reviewer",
+                "capability": "bridge.notes.create",
+                "parameters": {"title": "Reviewed findings", "content_task": "draft"},
+                "depends_on": ["draft"],
+            },
+        ]
+        self.model.result = self.response()
+        result = propose_goal(
+            self.engine,
+            self.project_id,
+            "Write the findings and create a Notes draft",
+            deliverable={"format": "html", "layout": "visual_story"},
+        )
+        prompt = json.loads(self.model.calls[0][0][3])
+        self.assertEqual(
+            prompt["available_workspace_actions"]["reviewer"],
+            ["bridge.notes.create", "bridge.demo.launch"],
+        )
+        self.assertNotIn("reviewer", prompt["available_model_agent_keys"])
+        self.assertIn("reviewer", prompt["available_agent_keys"])
+        note = result["tasks"][1]
+        self.assertEqual(
+            note["parameters"], {"title": "Reviewed findings", "content_task": "draft"}
+        )
+        self.assertEqual(note["depends_on"], ["draft"])
+        self.assertIn(
+            "fenced block labeled story", result["tasks"][0]["parameters"]["prompt"]
+        )
+        self.assertIn("user's goal explicitly requests", self.model.calls[0][0][2])
+        self.assertEqual(self.engine.store.tasks(), [])
+
+    def test_requested_demo_plan_has_only_the_bounded_launch_parameters(self):
+        self.workspace_actions()
+        self.plan["tasks"] = [
+            {
+                "id": "demo",
+                "title": "Launch the isolated demo",
+                "agent": "reviewer",
+                "capability": "bridge.demo.launch",
+                "parameters": {"port": 8787},
+                "depends_on": [],
+            }
+        ]
+        self.model.result = self.response()
+        result = propose_goal(
+            self.engine,
+            self.project_id,
+            "Launch the configured isolated demo on port 8787",
+        )
+        self.assertEqual(result["tasks"][0]["parameters"], {"port": 8787})
+        self.assertNotIn("path", result["tasks"][0]["parameters"])
+        self.assertEqual(self.engine.store.tasks(), [])
+
+    def test_unavailable_workspace_action_and_hosted_action_are_rejected(self):
+        self.workspace_actions(available=False)
+        self.plan["tasks"] = [
+            {
+                "id": "note",
+                "title": "Create draft",
+                "agent": "reviewer",
+                "capability": "bridge.notes.create",
+                "parameters": {"title": "Draft", "content": "Body"},
+                "depends_on": [],
+            }
+        ]
+        self.model.result = self.response()
+        with self.assertRaisesRegex(PermissionError, "unavailable"):
+            propose_goal(self.engine, self.project_id, "Create a Notes draft")
+        self.workspace_actions()
+        with self.assertRaisesRegex(PermissionError, "unavailable"):
+            propose_goal(
+                self.engine, self.project_id, "Create a Notes draft", allow_cli=False
+            )
+        self.assertEqual(self.engine.store.tasks(), [])
+
+    def test_workspace_action_parameter_and_source_schema_is_strict(self):
+        self.workspace_actions()
+        cases = [
+            (
+                "bridge.notes.create",
+                {"title": "Draft", "content": "Body", "content_task": "draft"},
+                [],
+            ),
+            ("bridge.notes.create", {"title": "Draft", "path": "secret.txt"}, []),
+            ("bridge.notes.create", {"title": "Draft", "content_task": "missing"}, []),
+            ("bridge.demo.launch", {"port": 80}, []),
+            ("bridge.demo.launch", {"port": True}, []),
+            ("bridge.demo.launch", {"command": "arbitrary shell"}, []),
+        ]
+        for capability, parameters, dependencies in cases:
+            with self.subTest(parameters=parameters):
+                self.plan["tasks"] = [
+                    {
+                        "id": "action",
+                        "title": "Workspace action",
+                        "agent": "reviewer",
+                        "capability": capability,
+                        "parameters": parameters,
+                        "depends_on": dependencies,
+                    }
+                ]
+                self.model.result = self.response()
+                with self.assertRaises(ValueError):
+                    propose_goal(
+                        self.engine,
+                        self.project_id,
+                        "Prepare the requested workspace action",
+                    )
+
+    def test_native_action_owner_can_be_available_when_its_model_is_not(self):
+        self.workspace_actions(native=True)
+        self.plan["tasks"] = [
+            {
+                "id": "note",
+                "title": "Create draft",
+                "agent": "reviewer",
+                "capability": "bridge.notes.create",
+                "parameters": {"title": "Draft", "content": "Prepared text"},
+                "depends_on": [],
+            }
+        ]
+        native = FakeNativeModel(self.response())
+        self.engine.research = native
+        result = propose_goal(
+            self.engine,
+            self.project_id,
+            "Create a Notes draft",
+            research_mode="native_cli",
+        )
+        context = json.loads(native.calls[0][0][4])
+        self.assertIn("reviewer", context["available_workspace_actions"])
+        self.assertNotIn("reviewer", context["available_model_agent_keys"])
+        self.assertEqual(result["tasks"][0]["capability"], "bridge.notes.create")
+        self.plan["tasks"][0] = {
+            "id": "research",
+            "title": "Research",
+            "agent": "reviewer",
+            "parameters": {"prompt": "Research"},
+            "depends_on": [],
+        }
+        native.result = self.response()
+        with self.assertRaisesRegex(ValueError, "without an available model"):
+            propose_goal(
+                self.engine,
+                self.project_id,
+                "Research the project",
+                research_mode="native_cli",
+            )
 
     def test_readiness_is_required_and_cannot_hide_missing_context(self):
         invalid = [

@@ -71,6 +71,23 @@
   border-bottom: 1px solid var(--line);
   gap: 14px;
 }
+.research-preferences,
+.research-evidence {
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+  margin-top: 20px;
+}
+.research-capability {
+  padding: 24px;
+  margin-bottom: 24px;
+}
+.research-evidence li {
+  overflow-wrap: anywhere;
+  margin-block: 8px;
+}
+.field[hidden] {
+  display: none;
+}
 .tabs {
   display: flex;
   gap: 25px;

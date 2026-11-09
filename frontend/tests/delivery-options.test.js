@@ -39,11 +39,11 @@ test("new goals default to a PDF deliverable and send its visual style to planni
     dialog.querySelector('[data-field="goal"]').value = "Explain the architecture";
     submit(dialog, dom.window);
     await tick();
-    assert.deepEqual(planned.deliverable, { format: "pdf", style: "editorial" });
+    assert.deepEqual(planned.deliverable, { format: "pdf", style: "editorial", layout: "visual_story" });
     assert.equal(dialog.querySelector('[data-field="deliverable-format"]').value, "pdf");
     submit(dialog, dom.window);
     await tick();
-    assert.deepEqual(started.deliverable, { format: "pdf", style: "editorial" });
+    assert.deepEqual(started.deliverable, { format: "pdf", style: "editorial", layout: "visual_story" });
   } finally { dom.window.close(); }
 });
 
@@ -58,7 +58,7 @@ test("deliverable choices survive planning, review edits, and returning to the g
     dialog.querySelector('[data-field="deliverable-style"]').value = "neon";
     submit(dialog, dom.window);
     await tick();
-    assert.deepEqual(requests[0].deliverable, { format: "html", style: "neon" });
+    assert.deepEqual(requests[0].deliverable, { format: "html", style: "neon", layout: "visual_story" });
     assert.equal(dialog.querySelector('[data-field="deliverable-format"]').value, "html");
     assert.equal(dialog.querySelector('[data-field="deliverable-style"]').value, "neon");
     dialog.querySelector('[data-field="deliverable-style"]').value = "ocean";
@@ -67,10 +67,10 @@ test("deliverable choices survive planning, review edits, and returning to the g
     assert.equal(dialog.querySelector('[data-field="deliverable-style"]').value, "ocean");
     submit(dialog, dom.window);
     await tick();
-    assert.deepEqual(requests[1].deliverable, { format: "html", style: "ocean" });
+    assert.deepEqual(requests[1].deliverable, { format: "html", style: "ocean", layout: "visual_story" });
     submit(dialog, dom.window);
     await tick();
-    assert.deepEqual(started.deliverable, { format: "html", style: "ocean" });
+    assert.deepEqual(started.deliverable, { format: "html", style: "ocean", layout: "visual_story" });
   } finally { dom.window.close(); }
 });
 

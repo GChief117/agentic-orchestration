@@ -381,6 +381,7 @@ def make_handler(
                             data.get("source_files"),
                             allow_cli=local_features,
                             deliverable=data.get("deliverable"),
+                            research_mode=data.get("research_mode", "source_context"),
                         ),
                     )
                 elif route.startswith("/api/projects/") and route.endswith("/team"):
@@ -420,6 +421,7 @@ def make_handler(
                         allow_cli=local_features,
                         expected_team_revision=data.get("team_revision"),
                         deliverable=data.get("deliverable"),
+                        research_mode=data.get("research_mode", "source_context"),
                     )
                     self.send(HTTPStatus.CREATED, {"id": goal_id})
                 elif route.startswith("/api/goals/") and route.endswith("/deliverable"):

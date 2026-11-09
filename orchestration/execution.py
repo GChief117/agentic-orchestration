@@ -24,6 +24,8 @@ class LocalExecutor:
         allow_source_access=True,
         on_progress=None,
         source_reader=None,
+        research_runtime=None,
+        bridge_actions=None,
     ):
         """Attach the local target policy used to authorize and scope operations."""
         self.connection = connection
@@ -32,6 +34,8 @@ class LocalExecutor:
         self.allow_source_access = allow_source_access
         self.on_progress = on_progress
         self.source_reader = source_reader
+        self.research_runtime = research_runtime
+        self.bridge_actions = bridge_actions
 
     def execute(self, task, cancelled):
         """Perform one supported operation and return an evidence-bearing receipt.
@@ -90,6 +94,43 @@ class LocalExecutor:
                 "accepted": expected is None or data == expected.encode(),
                 "effect": "none",
             }
+        elif capability.startswith("bridge."):
+            if self.bridge_actions is None:
+                raise PermissionError("Connected workspace actions are unavailable")
+            action_params = dict(params)
+            if capability == "bridge.notes.create" and params.get("content_task"):
+                source = next(
+                    (
+                        item
+                        for item in task["context"].get("handoffs", [])
+                        if item.get("parameters", {}).get("plan_task_id")
+                        == params["content_task"]
+                    ),
+                    None,
+                )
+                if source is None:
+                    raise ValueError("The Notes draft source task is not available")
+                receipt = source.get("receipt") or {}
+                data = self.connection.path(receipt.get("artifact")).read_bytes()
+                if len(data) > 65536 or hashlib.sha256(data).hexdigest() != receipt.get(
+                    "sha256"
+                ):
+                    raise ValueError(
+                        "The Notes draft changed after its source task completed"
+                    )
+                action_params["content"] = data.decode()
+            result = self.bridge_actions.execute(
+                task["project_id"],
+                capability,
+                action_params,
+                project_definition=task["context"].get("project_definition"),
+                shared_context=task["context"].get("shared_context"),
+                operation_id=task["id"],
+                cancelled=cancelled,
+                progress=(lambda event: self.on_progress(task["id"], event))
+                if self.on_progress
+                else None,
+            )
         elif capability == "model.generate":
             if self.models is None and self.cli_models is None:
                 raise ValueError("Model execution is not configured")
@@ -134,6 +175,8 @@ class LocalExecutor:
                             "A handoff artifact changed after verification"
                         )
                     text = data.decode("utf-8")
+                elif not text:
+                    text = json.dumps(receipt, ensure_ascii=False)
                 excerpt = str(text)[: min(32000, remaining)]
                 handoffs.append(
                     {
@@ -187,7 +230,23 @@ class LocalExecutor:
                 }
             )
             execution_mode = agent.get("execution_mode", "api")
-            if execution_mode == "cli":
+            if context.get("goal", {}).get("research_mode") == "native_cli":
+                if self.research_runtime is None:
+                    raise PermissionError("Native workspace research is unavailable")
+                try:
+                    generated = self.research_runtime.generate(
+                        task["project_id"],
+                        agent["provider"],
+                        agent["model"],
+                        system,
+                        prompt,
+                        cancelled=cancelled,
+                        progress=progress,
+                        speed=agent.get("execution_speed", "standard"),
+                    )
+                except InterruptedError:
+                    raise ExecutionCancelled("Native research was cancelled") from None
+            elif execution_mode == "cli":
                 if self.cli_models is None:
                     raise PermissionError("Local CLI execution is unavailable")
                 try:
@@ -245,7 +304,9 @@ class LocalExecutor:
             result.update(
                 provider=agent["provider"],
                 model=agent["model"],
-                execution_mode=execution_mode,
+                execution_mode="native_cli"
+                if context.get("goal", {}).get("research_mode") == "native_cli"
+                else execution_mode,
                 execution_speed=agent.get("execution_speed", "standard"),
                 source_files=[
                     {"path": item["path"], "sha256": item["sha256"]}
@@ -259,6 +320,8 @@ class LocalExecutor:
                 if generated["complete"]
                 else "Provider output was incomplete; downstream tasks remain blocked",
             )
+            if generated.get("research"):
+                result["research"] = generated["research"]
         elif capability == "terminal.python_version":
             # Fixed argument vector: no user command, shell interpolation, or arbitrary program.
             completed = subprocess.run(
