@@ -599,3 +599,83 @@
 .appearance-swatches[data-palette="neon"] i:nth-child(3) {
   background: #0c1d35;
 }
+
+/* Chart surfaces are distinct from the surrounding workspace in every palette. */
+:root[data-theme="neutral"] {
+  --org-canvas: #e9edf3;
+  --org-card: #ffffff;
+  --org-owner: #dbe3ee;
+  --org-selected: #dce8ff;
+  --org-border: #66778f;
+  --org-link: #66778f;
+  --org-badge: #d7e0ed;
+  --org-text: #20242c;
+  --org-secondary: #556174;
+  --org-accent: #315bc3;
+  --org-shadow: #17243a25;
+}
+:root[data-theme="graphite"] {
+  --org-canvas: #11151c;
+  --org-card: #2d3746;
+  --org-owner: #233047;
+  --org-selected: #294a79;
+  --org-border: #8b9cb4;
+  --org-link: #8b9cb4;
+  --org-badge: #42516a;
+  --org-text: #f2f6fc;
+  --org-secondary: #ccd6e4;
+  --org-accent: #a9c0ff;
+  --org-shadow: #00000055;
+}
+:root[data-theme="warm"] {
+  --org-canvas: #eee4d6;
+  --org-card: #fffdf8;
+  --org-owner: #e3d4c0;
+  --org-selected: #f5dec9;
+  --org-border: #8b725e;
+  --org-link: #8b725e;
+  --org-badge: #ebdcca;
+  --org-text: #342d28;
+  --org-secondary: #66574c;
+  --org-accent: #9e482f;
+  --org-shadow: #48372e25;
+}
+:root[data-theme="ocean"] {
+  --org-canvas: #e5eeea;
+  --org-card: #fffdf8;
+  --org-owner: #cfdfd8;
+  --org-selected: #cce6e0;
+  --org-border: #59786f;
+  --org-link: #59786f;
+  --org-badge: #d6e6de;
+  --org-text: #213b3a;
+  --org-secondary: #435c55;
+  --org-accent: #256765;
+  --org-shadow: #213b3a25;
+}
+:root[data-theme="plum"] {
+  --org-canvas: #eee4eb;
+  --org-card: #fffdf8;
+  --org-owner: #e2ccdb;
+  --org-selected: #ecd6e7;
+  --org-border: #87667f;
+  --org-link: #87667f;
+  --org-badge: #eedddf;
+  --org-text: #3d2c3d;
+  --org-secondary: #674b61;
+  --org-accent: #734769;
+  --org-shadow: #3d2c3d25;
+}
+:root[data-theme="neon"] {
+  --org-canvas: #020509;
+  --org-card: #132238;
+  --org-owner: #102038;
+  --org-selected: #10335d;
+  --org-border: #719dd0;
+  --org-link: #719dd0;
+  --org-badge: #456e9f;
+  --org-text: #eff6ff;
+  --org-secondary: #c3d5ed;
+  --org-accent: #278eff;
+  --org-shadow: #00000055;
+}

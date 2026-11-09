@@ -1,4 +1,18 @@
 /* Shared SVG organization canvas and chart-first roster inspector. */
+:root {
+  --org-canvas: #edf2e8;
+  --org-card: #ffffff;
+  --org-owner: #e1ead7;
+  --org-selected: #ddecce;
+  --org-border: #63785c;
+  --org-link: #63785c;
+  --org-badge: #e1ead7;
+  --org-text: #23351e;
+  --org-secondary: #53644d;
+  --org-accent: #236448;
+  --org-shadow: #20382025;
+}
+
 .organization-panel {
   margin-bottom: 24px;
 }
@@ -9,7 +23,7 @@
   width: 100%;
   min-width: 0;
   overflow: hidden;
-  background: var(--theme-soft, #f8fbf5);
+  background: var(--org-canvas);
   border-radius: 9px;
 }
 .organization-chart svg {
@@ -24,18 +38,23 @@
 }
 .org-connectors path {
   fill: none;
-  stroke: var(--theme-border, #aec3aa);
-  stroke-width: 1.5;
+  stroke: var(--org-link);
+  stroke-width: 2;
   vector-effect: non-scaling-stroke;
 }
 .org-node rect {
-  fill: var(--theme-surface, #fff);
-  stroke: var(--theme-border, #cedec8);
-  stroke-width: 1.2;
+  fill: var(--org-card);
+  stroke: var(--org-border);
+  stroke-width: 1.75;
   vector-effect: non-scaling-stroke;
 }
 .org-node circle {
-  fill: var(--theme-soft, #edf4e6);
+  fill: var(--org-badge);
+  stroke: var(--org-border);
+  stroke-width: 1;
+}
+.org-node {
+  filter: drop-shadow(0 3px 5px var(--org-shadow));
 }
 .org-node text {
   text-anchor: middle;
@@ -44,20 +63,20 @@
 }
 .node-initial {
   font-size: 11px;
-  fill: var(--theme-secondary, #5d7a53);
+  fill: var(--org-text);
   font-weight: 600;
 }
 .node-name {
   font-size: 12px;
-  fill: var(--theme-text, #2c4c2c);
+  fill: var(--org-text);
   font-weight: 600;
 }
 .node-role {
   font-size: 10px;
-  fill: var(--theme-secondary, #7e9475);
+  fill: var(--org-secondary);
 }
 .owner-node rect {
-  fill: var(--theme-soft, #f4f8ef);
+  fill: var(--org-owner);
   stroke-dasharray: 5 4;
 }
 .owner-node .node-initial {
@@ -67,25 +86,26 @@
   cursor: pointer;
 }
 .org-node[role="button"]:hover rect {
-  stroke: var(--theme-accent, #73955d);
-  fill: var(--theme-surface, #fcfff7);
+  stroke: var(--org-accent);
+  fill: var(--org-card);
 }
-.org-node.selected rect {
-  stroke: var(--theme-accent, #34703e);
+.org-node.selected rect,
+.org-node.selected:hover rect {
+  stroke: var(--org-accent);
   stroke-width: 2.5;
-  fill: var(--theme-soft, #f2f9eb);
+  fill: var(--org-selected);
 }
 .org-node:focus {
   outline: none;
 }
 .org-node:focus rect {
-  stroke: var(--theme-accent, #34703e);
+  stroke: var(--org-accent);
   stroke-width: 3;
 }
 .org-node.drop-target rect {
-  stroke: var(--theme-accent, #207956);
+  stroke: var(--org-accent);
   stroke-width: 3;
-  fill: var(--theme-soft, #e2f1d8);
+  fill: var(--org-selected);
 }
 .node-busy {
   fill: var(--theme-secondary, #6caf70) !important;
@@ -93,7 +113,7 @@
 .org-drag-link {
   pointer-events: none;
   fill: none;
-  stroke: var(--theme-accent, #6a9b62);
+  stroke: var(--org-accent);
   stroke-width: 2;
   stroke-dasharray: 5 4;
 }
@@ -101,7 +121,7 @@
   border: 1px solid var(--theme-border, #d8e5d0);
   border-radius: 11px;
   overflow: hidden;
-  background: var(--theme-surface, #fff);
+  background: var(--org-card);
 }
 .chart-toolbar {
   display: flex;
@@ -136,7 +156,7 @@
 }
 .chart-workspace {
   min-width: 0;
-  background: var(--theme-soft, #f8fbf5);
+  background: var(--org-canvas);
   padding: 16px;
 }
 .chart-workspace .organization-chart svg {
@@ -171,7 +191,7 @@
 .node-inspector {
   padding: 20px;
   border-left: 1px solid var(--theme-border, #e1e9da);
-  background: var(--theme-surface, #fff);
+  background: var(--org-card);
   max-height: 720px;
   overflow: auto;
 }
@@ -246,16 +266,16 @@
   filter: drop-shadow(0 6px 10px var(--theme-shadow, #23462b33));
 }
 .org-node.dragging rect {
-  fill: var(--theme-surface, #fff);
-  stroke: var(--theme-accent, #34703e);
+  fill: var(--org-card);
+  stroke: var(--org-accent);
   stroke-width: 2.5;
 }
 .organization-chart svg.is-dragging {
   cursor: grabbing;
 }
 .org-drag-origin {
-  fill: var(--theme-soft, #eff5ea);
-  stroke: var(--theme-border, #b7cdb0);
+  fill: var(--org-owner);
+  stroke: var(--org-border);
   stroke-dasharray: 5 4;
   stroke-width: 1.5;
   pointer-events: none;
