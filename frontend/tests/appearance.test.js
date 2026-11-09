@@ -106,12 +106,12 @@ test("typography changes independently and survives a reload", () => {
   }
 });
 
-test("all six palettes expose typography without resetting the selected font", () => {
+test("all seven palettes expose typography without resetting the selected font", () => {
   const dom = new JSDOM("<div></div>", { url: "http://localhost" });
   try {
     const document = dom.window.document;
     const dialog = openAppearanceForm(document);
-    assert.equal(Object.keys(APPEARANCES).length, 6);
+    assert.equal(Object.keys(APPEARANCES).length, 7);
     dialog.querySelector('[data-typography-option="iowan"]').click();
     for (const palette of Object.keys(APPEARANCES)) {
       dialog.querySelector(`[data-appearance="${palette}"]`).click();

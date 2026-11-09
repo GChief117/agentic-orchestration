@@ -61,4 +61,4 @@ Saved teams can be edited only when their project has no queued or running work.
 
 ## Appearance options
 
-Use **Appearance** in the sidebar to compare Original green, Crisp neutral, Dark graphite, Warm minimal, Ocean & clay, and Plum & honey. Typography and branding choices work independently of the palette. Visual preferences are stored locally; credentials remain in memory. Theme definitions live in `styles/themes.css`.
+Use **Appearance** in the sidebar to compare Original green, Crisp neutral, Dark graphite, Warm minimal, Ocean & clay, Plum & honey, and Neon blue. Typography and branding choices work independently of the palette. Visual preferences are stored locally; credentials remain in memory. Theme definitions live in `styles/themes.css`.

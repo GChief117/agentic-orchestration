@@ -109,21 +109,21 @@
 :root[data-theme] .danger-text {
   color: #a0372f;
 }
-:root[data-theme="graphite"] .status.success,
-:root[data-theme="graphite"] .connection {
+:root:is([data-theme="graphite"], [data-theme="neon"]) .status.success,
+:root:is([data-theme="graphite"], [data-theme="neon"]) .connection {
   color: #a4dcad;
   background: #263d30;
 }
-:root[data-theme="graphite"] .status.danger,
-:root[data-theme="graphite"] .notice.danger {
+:root:is([data-theme="graphite"], [data-theme="neon"]) .status.danger,
+:root:is([data-theme="graphite"], [data-theme="neon"]) .notice.danger {
   color: #f3aaa1;
   background: #442d30;
   border-color: #714348;
 }
-:root[data-theme="graphite"] .danger-text {
+:root:is([data-theme="graphite"], [data-theme="neon"]) .danger-text {
   color: #f3aaa1;
 }
-:root[data-theme="graphite"] .status.warning {
+:root:is([data-theme="graphite"], [data-theme="neon"]) .status.warning {
   color: #e9cb8d;
   background: #423a29;
 }
@@ -221,7 +221,7 @@
   color: #8b6219;
   background: #fbf1d8;
 }
-:root[data-theme="graphite"] .status.warning {
+:root:is([data-theme="graphite"], [data-theme="neon"]) .status.warning {
   color: #e9cb8d;
   background: #423a29;
 }
@@ -564,4 +564,38 @@
 }
 .appearance-swatches[data-palette="plum"] i:nth-child(3) {
   background: #eee2e8;
+}
+
+/* Electric blue on near-black surfaces; glow stays on selected controls. */
+:root[data-theme="neon"] {
+  color-scheme: dark;
+  --theme-text: #eff6ff;
+  --theme-secondary: #a5b5cc;
+  --theme-border: #22354e;
+  --theme-surface: #080e18;
+  --theme-soft: #0c1d35;
+  --theme-accent: #278eff;
+  --theme-inverse: #020509;
+  --theme-on-accent: #020509;
+  --theme-shadow: #0088ff30;
+  --theme-canvas: #020509;
+  --theme-nav: #03070e;
+  --theme-nav-text: #a5b5cc;
+  --theme-radius: 8px;
+}
+:root[data-theme="neon"] .button.primary,
+:root[data-theme="neon"] .brand-icon {
+  box-shadow: 0 0 20px #278eff30;
+}
+:root[data-theme="neon"] .org-node.selected {
+  filter: drop-shadow(0 0 5px #278eff50);
+}
+.appearance-swatches[data-palette="neon"] i:nth-child(1) {
+  background: #020509;
+}
+.appearance-swatches[data-palette="neon"] i:nth-child(2) {
+  background: #278eff;
+}
+.appearance-swatches[data-palette="neon"] i:nth-child(3) {
+  background: #0c1d35;
 }

@@ -19,6 +19,10 @@ export const APPEARANCES = {
     name: "Dark graphite",
     detail: "Dark surfaces, quiet borders, and cool blue accents.",
   },
+  neon: {
+    name: "Neon blue",
+    detail: "Near-black surfaces, electric-blue accents, and a subtle glow.",
+  },
   ocean: {
     name: "Ocean & clay",
     detail: "Deep teal, soft clay surfaces, and a light coastal background.",
