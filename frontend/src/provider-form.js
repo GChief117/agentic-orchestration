@@ -2,7 +2,7 @@ import { mountDialog, showError } from "./form-controls.js";
 import { escapeHtml as e } from "./domain.js";
 
 const states = {
-  signed_in: "Signed in to local tool",
+  signed_in: "Saved sign-in available",
   signed_out: "Sign-in required",
   not_installed: "Tool not installed",
   unverified: "Sign-in not verified",
@@ -22,7 +22,7 @@ export function openProviderForm(document, api) {
 
 /** Mount local sign-in controls inside an existing dialog or connection tab. */
 export function mountProviderPanel(content, controller, api) {
-  content.innerHTML = `<div class="dialog-body"><p>Choose the account you want to use. Sign-in opens the provider’s official tool in Terminal, where you complete its browser sign-in.</p><div class="notice">These accounts belong to your local CLI tools. Model tasks in this app use separate API-key connections.</div><div data-providers aria-live="polite">Checking installed tools…</div><p data-provider-message role="status"></p><div class="notice danger hidden" data-error role="alert"></div></div><footer class="dialog-footer"><span>Credentials stay with the provider’s tool.</span><button class="button" data-refresh-providers>Refresh status</button></footer>`;
+  content.innerHTML = `<div class="dialog-body"><p>Your CLI tools keep their sign-in on this computer and reuse it when you reopen the app. Sign in through the provider’s tool only when needed.</p><div class="notice">Credentials stay in each CLI’s own credential store. This app does not copy them. Model tasks currently use separate API-key connections.</div><div data-providers aria-live="polite">Checking saved sign-ins…</div><p data-provider-message role="status"></p><div class="notice danger hidden" data-error role="alert"></div></div><footer class="dialog-footer"><span>Saved CLI sign-ins survive app restarts. Sign in again if a provider expires or revokes the session.</span><button class="button" data-refresh-providers>Refresh status</button></footer>`;
   const list = content.querySelector("[data-providers]");
 
   /** Render truthful provider states and commands returned by the local backend. */
@@ -30,7 +30,7 @@ export function mountProviderPanel(content, controller, api) {
     list.innerHTML = providers
       .map(
         (provider) =>
-          `<section class="provider-card"><div><h3>${e(provider.name)}</h3><p>${e(provider.tool)} · ${e(states[provider.state] || "Sign-in not verified")}</p></div><button class="button primary" data-provider="${e(provider.id)}" ${provider.can_launch ? "" : "disabled"}>${provider.state === "signed_in" ? "Sign in again" : `Sign in with ${e(provider.name)}`}</button><p class="provider-help">${provider.id === "gemini" ? "Start Antigravity CLI with agy and complete its Google sign-in if prompted. This app cannot verify Antigravity’s sign-in state yet." : "Finish the sign-in flow, then refresh status here."}</p><div class="provider-help">${provider.installed ? "Manual sign-in:" : "Install the official tool first, then run:"} <code>${e(provider.command)}</code> · <a href="${e(provider.docs)}" target="_blank" rel="noopener noreferrer">Tool website ↗</a></div></section>`,
+          `<section class="provider-card"><div><h3>${e(provider.name)}</h3><p>${e(provider.tool)} · ${e(states[provider.state] || "Sign-in not verified")}</p></div><button class="button ${provider.state === "signed_in" ? "" : "primary"}" data-provider="${e(provider.id)}" ${provider.can_launch ? "" : "disabled"}>${provider.state === "signed_in" ? "Switch account" : provider.id === "gemini" && provider.installed ? "Open Antigravity" : `Sign in with ${e(provider.name)}`}</button><p class="provider-help">${providerHelp(provider)}</p><div class="provider-help">${provider.installed ? "Manual sign-in:" : "Install the official tool first, then run:"} <code>${e(provider.command)}</code> · <a href="${e(provider.docs)}" target="_blank" rel="noopener noreferrer">Tool website ↗</a></div></section>`,
       )
       .join("");
   }
@@ -72,4 +72,13 @@ export function mountProviderPanel(content, controller, api) {
   }
   content.addEventListener("click", click);
   return refresh();
+}
+
+/** Explain whether a saved session was verified without treating a launch as login. */
+function providerHelp(provider) {
+  if (provider.state === "signed_in")
+    return "Your saved sign-in is available. Reopening this app does not require signing in again.";
+  if (provider.id === "gemini")
+    return "Antigravity reuses its saved Google sign-in on this computer. Open it with agy and sign in only if prompted. This app cannot verify its login status yet.";
+  return "Complete sign-in in Terminal, then refresh status. The CLI saves the session on this computer.";
 }

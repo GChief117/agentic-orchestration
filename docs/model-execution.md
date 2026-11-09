@@ -13,6 +13,15 @@ to a CLI does not supply an API key to the text-generation runtime, and
 Antigravity login status is shown as unverified. Hosted workspaces show only
 API connections.
 
+CLI credentials stay in the provider's persistent credential store on the same
+computer. The app never copies them into its database, project files, or browser
+storage. Opening Model connections checks the existing Codex and Claude sessions;
+it does not launch login automatically. A verified session is shown as **Saved
+sign-in available**, with **Switch account** as an explicit action. Antigravity
+reuses its own saved Google session, but this app does not have a reliable login
+status check for it. A provider can still expire or revoke a saved session, and
+signing out from the CLI also signs it out for this app.
+
 A `model.generate` task requires a prompt, a project-relative output path, and
 an output limit of 1–8192 tokens (default 2048). The API call uses the selected
 agent's instructions, project charter, roster, and completed handoffs. Explicit

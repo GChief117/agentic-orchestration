@@ -56,7 +56,11 @@ test("provider dialog launches only on click and never treats launch as authenti
     providers[0].state = "signed_in";
     dialog.querySelector("[data-refresh-providers]").click();
     await tick();
-    assert.match(dialog.textContent, /Signed in to local tool/);
+    assert.match(dialog.textContent, /Saved sign-in available/);
+    assert.equal(
+      dialog.querySelector('[data-provider="openai"]').textContent,
+      "Switch account",
+    );
     dialog.close();
   } finally {
     dom.window.close();
