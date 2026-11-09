@@ -1,6 +1,7 @@
 """Project charters and persistent agent-team definitions for new work."""
 
 from dataclasses import dataclass
+from .models import PROVIDERS, model_name
 
 
 def text(value, label, maximum=4000):
@@ -37,6 +38,9 @@ class AgentDefinition:
     capabilities: list[str]
     reports_to: str | None
     max_concurrency: int
+    provider: str | None
+    model: str | None
+    collaborators: list[str]
 
 
 @dataclass(frozen=True)
@@ -96,6 +100,17 @@ def parse_project(document, connection):
         parent = item.get("reports_to")
         if parent is not None:
             parent = text(parent, "Reporting agent key", 80)
+        provider = item.get("provider") or None
+        model = item.get("model") or None
+        if provider is not None and provider not in PROVIDERS:
+            raise ValueError("Unknown model provider")
+        if model is not None:
+            model = model_name(model)
+        if model is not None and provider is None:
+            raise ValueError("A model requires a provider")
+        collaborators = text_list(item.get("collaborators", []), "Collaborators")
+        if len(set(collaborators)) != len(collaborators) or key in collaborators:
+            raise ValueError("Collaborators must be distinct other agents")
         agents.append(
             AgentDefinition(
                 key,
@@ -110,8 +125,18 @@ def parse_project(document, connection):
                 capabilities,
                 parent,
                 positive_integer(item.get("max_concurrency"), "Agent concurrency"),
+                provider,
+                model,
+                collaborators,
             )
         )
+    by_key = {agent.key: agent for agent in agents}
+    for agent in agents:
+        for peer in list(agent.collaborators):
+            if peer not in by_key:
+                raise ValueError("Collaboration points to an unknown agent")
+            if agent.key not in by_key[peer].collaborators:
+                by_key[peer].collaborators.append(agent.key)
     parents = {agent.key: agent.reports_to for agent in agents}
     for agent in agents:
         seen, current = set(), agent.key

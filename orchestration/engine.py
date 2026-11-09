@@ -11,6 +11,7 @@ from .scheduling import CapacityLimits, goal_state, select_work
 from .projects import parse_project, positive_integer
 from .storage import Store
 from .providers import ProviderConnections
+from .models import ModelRuntime
 from .discovery import ProjectDiscovery, imported_definition
 
 
@@ -37,7 +38,8 @@ class Engine:
             for key, value in target_limits.items()
         }
         self.connection = LocalConnection(Path(directory) / "artifacts")
-        self.executor = executor or LocalExecutor(self.connection)
+        self.models = ModelRuntime()
+        self.executor = executor or LocalExecutor(self.connection, self.models)
         self.store = Store(directory)
         self.providers = ProviderConnections(directory)
         self.discovery = ProjectDiscovery()
@@ -161,6 +163,14 @@ class Engine:
             self.store.project(project_id)
             team = self.store.agents(project_id)
             definitions = parse_tasks(tasks, self.connection, project_id, team)
+            by_id = {agent["id"]: agent for agent in team}
+            for task in definitions:
+                if task.capability == "model.generate" and not self.models.ready(
+                    by_id[task.agent_id]["provider"]
+                ):
+                    raise ValueError(
+                        "Connect the assigned model provider before submitting this goal"
+                    )
             with self.store.db:
                 goal_id = self.store.create_goal(
                     project_id, title.strip(), definitions, "local-workspace"
@@ -249,6 +259,35 @@ class Engine:
                     context={
                         "project": projects[task["project_id"]],
                         "agent": agents[task["agent_id"]],
+                        "team": [
+                            {
+                                "id": peer["id"],
+                                "key": peer["key"],
+                                "name": peer["name"],
+                                "role": peer["role"],
+                                "reports_to": peer["reports_to"],
+                                "collaborators": peer.get("collaborators", []),
+                            }
+                            for peer in state["agents"]
+                            if peer["project_id"] == task["project_id"]
+                        ],
+                        "handoffs": sorted(
+                            [
+                                source
+                                for source in state["tasks"]
+                                if source["project_id"] == task["project_id"]
+                                and source["state"] == "accepted"
+                                and (
+                                    source["id"] in task["dependencies"]
+                                    or agents[source["agent_id"]]["key"]
+                                    in agents[task["agent_id"]].get("collaborators", [])
+                                )
+                            ],
+                            key=lambda source: (
+                                source["id"] not in task["dependencies"],
+                                -(source.get("finished") or 0),
+                            ),
+                        ),
                     },
                 )
                 dispatch.append((operation, signal, attempt_id))

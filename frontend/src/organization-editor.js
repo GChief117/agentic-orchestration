@@ -24,6 +24,7 @@ export function editableAgents(agents) {
       ? agent.responsibilities.join("\n")
       : agent.responsibilities,
     capabilities: [...agent.capabilities],
+    collaborators: [...(agent.collaborators || [])],
     reports_to: byId.get(agent.reports_to) || agent.reports_to || "",
     max_concurrency: String(agent.max_concurrency),
   }));
@@ -40,6 +41,7 @@ export function mountOrganizationEditor({
   onChange,
   lockedKeys = [],
   selectedKey = null,
+  modelProviders = [],
 }) {
   const document = root.ownerDocument;
   let agents = editableAgents(initial),
@@ -73,6 +75,7 @@ export function mountOrganizationEditor({
       agents: agents.map((agent) => ({
         ...agent,
         capabilities: [...agent.capabilities],
+        collaborators: [...(agent.collaborators || [])],
       })),
       max_concurrency: concurrency,
     };
@@ -108,6 +111,36 @@ export function mountOrganizationEditor({
   function current() {
     return agents.find((agent) => agent.key === selected);
   }
+  /** Show each agent's provider/model assignment and reciprocal peer links. */
+  function modelAndPeers(agent) {
+    const provider = modelProviders.find((item) => item.id === agent.provider);
+    const models = [
+      ...new Set([
+        ...(provider?.models || []),
+        ...(agent.model ? [agent.model] : []),
+      ]),
+    ];
+    return `<label class="field"><span>Model provider</span><select data-agent-provider aria-label="Model provider"><option value="">No model assigned</option>${[
+      ["openai", "OpenAI"],
+      ["claude", "Claude"],
+      ["gemini", "Gemini"],
+    ]
+      .map(
+        ([key, name]) =>
+          `<option value="${key}" ${agent.provider === key ? "selected" : ""}>${name}</option>`,
+      )
+      .join(
+        "",
+      )}</select></label>${agent.provider ? `<label class="field"><span>Model</span><select data-agent-model aria-label="Model"><option value="">Choose a model</option>${models.map((model) => `<option value="${e(model)}" ${agent.model === model ? "selected" : ""}>${e(model)}</option>`).join("")}</select><small>${provider?.configured ? "Models loaded from the provider's API." : "Connect this provider in Model connections, then reopen the team editor."}</small></label>` : ""}<fieldset class="collaborator-picker"><legend>Works with</legend>${agents
+      .filter((peer) => peer.key !== agent.key)
+      .map(
+        (peer) =>
+          `<label><input type="checkbox" data-collaborator value="${e(peer.key)}" ${(agent.collaborators || []).includes(peer.key) ? "checked" : ""}> ${e(peer.name)}</label>`,
+      )
+      .join(
+        "",
+      )}<p>Shares completed results. Set task dependencies to control handoff order.</p></fieldset>`;
+  }
   /** Render editable settings for the selected node, including an accessible reporting selector. */
   function inspector() {
     const agent = current();
@@ -122,7 +155,7 @@ export function mountOrganizationEditor({
       )
       .join(
         "",
-      )}</select></label>${input("Display name", "name", agent.name)}${input("Instructions", "instructions", agent.instructions, { textarea: true, rows: 5 })}<button type="button" class="text-button" data-chart-action="reset-instructions">Restore suggested instructions</button><label class="field"><span>Reports to</span><select data-agent-field="reports_to" aria-label="Reports to"><option value="">You · project owner</option>${agents
+      )}</select></label>${input("Display name", "name", agent.name)}${modelAndPeers(agent)}${input("Instructions", "instructions", agent.instructions, { textarea: true, rows: 5 })}<button type="button" class="text-button" data-chart-action="reset-instructions">Restore suggested instructions</button><label class="field"><span>Reports to</span><select data-agent-field="reports_to" aria-label="Reports to"><option value="">You · project owner</option>${agents
       .filter((other) => other.key !== agent.key)
       .map(
         (other) =>
@@ -159,7 +192,7 @@ export function mountOrganizationEditor({
       )
       .join(
         "",
-      )}</select><button class="button primary" type="button" data-chart-action="add" title="Add a role reporting to the selected agent, or to you when Project owner is selected">+ Add role</button></div></div><div class="chart-editor-body"><section class="chart-workspace"><div class="chart-view-controls"><button type="button" class="button" data-chart-action="zoom-out" aria-label="Zoom out">−</button><span data-zoom-label></span><button type="button" class="button" data-chart-action="zoom-in" aria-label="Zoom in">+</button><button type="button" class="button" data-chart-action="fit">Fit team</button></div><div data-chart-canvas></div><p class="chart-message" data-chart-message role="status"></p><div class="chart-capacity"><label class="field"><span>How much should run at once?</span><input type="number" min="1" step="1" aria-label="Project concurrency" data-project-concurrency value="${e(concurrency)}"><small>Enter a task limit or use the button below.</small></label><button type="button" class="button" data-chart-action="increase-tasks">+ Increase task limit</button><p class="muted">Team capacity: ${capacity} parallel tasks. Increasing above this adds slots to ${e((current() || agents[0]).name)}. Workspace limits still apply.</p></div></section><aside class="node-inspector" data-node-inspector>${inspector()}</aside></div></div>`;
+      )}</select><button class="button primary" type="button" data-chart-action="add" title="Add a role reporting to the selected agent, or to you when Project owner is selected">+ Add role</button></div></div><div class="chart-editor-body"><section class="chart-workspace"><div class="chart-view-controls"><button type="button" class="button" data-chart-action="zoom-out" aria-label="Zoom out">−</button><span data-zoom-label></span><button type="button" class="button" data-chart-action="zoom-in" aria-label="Zoom in">+</button><button type="button" class="button" data-chart-action="fit">Fit team</button></div><div data-chart-canvas></div><p class="chart-link-legend">Solid lines: reports to · Dashed lines: works with</p><p class="chart-message" data-chart-message role="status"></p><div class="chart-capacity"><label class="field"><span>How much should run at once?</span><input type="number" min="1" step="1" aria-label="Project concurrency" data-project-concurrency value="${e(concurrency)}"><small>Enter a task limit or use the button below.</small></label><button type="button" class="button" data-chart-action="increase-tasks">+ Increase task limit</button><p class="muted">Team capacity: ${capacity} parallel tasks. Increasing above this adds slots to ${e((current() || agents[0]).name)}. Workspace limits still apply.</p></div></section><aside class="node-inspector" data-node-inspector>${inspector()}</aside></div></div>`;
     draw();
   }
   /** Add a role under the current selection and generate an unused internal key. */
@@ -265,6 +298,38 @@ export function mountOrganizationEditor({
       }
       const agent = current();
       if (!agent) return;
+      if (event.target.matches("[data-agent-provider]")) {
+        agent.provider = event.target.value;
+        agent.model = "";
+        agent.capabilities = agent.capabilities.filter(
+          (cap) => cap !== "model.generate",
+        );
+        if (agent.provider) agent.capabilities.unshift("model.generate");
+        publish();
+        render();
+        return;
+      }
+      if (event.target.matches("[data-agent-model]")) {
+        agent.model = event.target.value;
+        publish();
+        return;
+      }
+      if (event.target.matches("[data-collaborator]")) {
+        const peer = agents.find((item) => item.key === event.target.value);
+        agent.collaborators = (agent.collaborators || []).filter(
+          (key) => key !== peer.key,
+        );
+        peer.collaborators = (peer.collaborators || []).filter(
+          (key) => key !== agent.key,
+        );
+        if (event.target.checked) {
+          agent.collaborators.push(peer.key);
+          peer.collaborators.push(agent.key);
+        }
+        publish();
+        draw();
+        return;
+      }
       const field = event.target.dataset.agentField;
       if (field === "role_template") {
         agents = agents.map((item) =>

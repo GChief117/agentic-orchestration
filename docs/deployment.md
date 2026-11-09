@@ -55,8 +55,9 @@ HTTP cache in front of authenticated responses.
 Local filesystem scanning and Terminal/provider sign-in are disabled in hosted
 mode. A remote server cannot discover projects or launch provider tools on a
 visitor's computer. The UI omits those actions in this mode. Core project, team,
-task, and appearance features remain available. Model execution is not yet
-implemented in either mode.
+task, appearance, and API-based model execution remain available. Configure API
+keys through Model connections or server environment variables; local CLI
+subscription sessions are not used for API execution.
 
 Multiple replicas must not share one SQLite volume. The runtime deliberately
 refuses to start a second engine against a locked data directory.

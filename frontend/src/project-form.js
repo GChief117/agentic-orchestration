@@ -10,7 +10,7 @@ import { mountOrganizationEditor } from "./organization-editor.js";
  * Internal keys are generated; role suggestions and dictated text remain editable.
  * @returns {HTMLDialogElement} Mounted editor; no project is saved before confirmation.
  */
-export function openProjectForm(document, onSubmit) {
+export function openProjectForm(document, onSubmit, modelProviders = []) {
   const controller = mountDialog(
     document,
     "Let’s set up your project",
@@ -95,7 +95,7 @@ export function openProjectForm(document, onSubmit) {
       .map((line) => `<li>${e(line)}</li>`)
       .join(
         "",
-      )}</ul><p class="muted">${draft.agents.length} assigned agents · up to ${draft.max_concurrency} concurrent tasks</p></div><div><span class="label">Team organization</span>${renderOrganizationChart(draft.agents)}</div></section><div class="notice info">This saves your project and team configuration. It does not start work or connect a model provider yet.</div>`;
+      )}</ul><p class="muted">${draft.agents.length} assigned agents · up to ${draft.max_concurrency} concurrent tasks</p></div><div><span class="label">Team organization</span>${renderOrganizationChart(draft.agents)}</div></section><div class="notice info">This saves your project and team configuration. Start a goal when you are ready to run its tasks.</div>`;
   }
 
   /** Rebuild the current step and bind its plain-language setup controls. */
@@ -129,6 +129,7 @@ export function openProjectForm(document, onSubmit) {
     });
     if (step === 1) {
       organizationEditor = mountOrganizationEditor({
+        modelProviders,
         root: content.querySelector("[data-organization-editor]"),
         agents: draft.agents,
         maxConcurrency: draft.max_concurrency,

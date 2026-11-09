@@ -83,6 +83,21 @@ export class ApiClient {
       candidate_ids: candidateIds,
     });
   }
+  /** List API connection readiness and cached model choices without secrets. */
+  models() {
+    return this.send("/api/models");
+  }
+  /** Verify a provider API key, or reload models for the current credential. */
+  connectModel(provider, key) {
+    return this.send("/api/models/connect", {
+      provider,
+      ...(key === undefined ? {} : { key }),
+    });
+  }
+  /** Forget the running server's credential for a provider. */
+  disconnectModel(provider) {
+    return this.send("/api/models/disconnect", { provider });
+  }
   /** List official provider tools and their reported authentication state. */
   providers() {
     return this.send("/api/providers");

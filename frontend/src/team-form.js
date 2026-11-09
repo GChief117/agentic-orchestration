@@ -3,7 +3,13 @@ import { mountOrganizationEditor } from "./organization-editor.js";
 import { projectPayload } from "./domain.js";
 
 /** Open the same chart editor for an existing project's persisted team. */
-export function openTeamForm(document, view, onSubmit, selectedKey = null) {
+export function openTeamForm(
+  document,
+  view,
+  onSubmit,
+  selectedKey = null,
+  modelProviders = [],
+) {
   const controller = mountDialog(
     document,
     "Edit team organization",
@@ -18,6 +24,7 @@ export function openTeamForm(document, view, onSubmit, selectedKey = null) {
   content.innerHTML =
     '<form data-team-form><div class="dialog-body"><p class="muted">Select a card to edit its role. Drag it onto another card to change its manager. Edits are saved only when you choose Save organization.</p><div data-team-editor></div><div class="notice danger hidden" data-error role="alert"></div></div><footer class="dialog-footer"><span>Existing agent identities and task history are preserved.</span><button class="button primary" type="submit" data-label="Save organization">Save organization</button></footer></form>';
   const editor = mountOrganizationEditor({
+    modelProviders,
     root: content.querySelector("[data-team-editor]"),
     agents: view.agents,
     maxConcurrency: view.project.max_concurrency,

@@ -60,10 +60,12 @@ def parse_tasks(tasks, connection, project_id, agents):
             raise ValueError("Duplicate dependency")
         # Infer canonical resource claims from actual operations, not user-supplied labels.
         resources = []
-        if capability in ("files.write", "files.inspect"):
+        if capability in ("files.write", "files.inspect", "model.generate"):
             path = connection.project_path(project_id, parameters.get("path"))
             parameters["path"] = str(path.relative_to(connection.workspace))
-            mode = "write" if capability == "files.write" else "read"
+            mode = (
+                "write" if capability in ("files.write", "model.generate") else "read"
+            )
             resources = [("file:" + str(path), mode)]
         if capability == "files.write":
             content = parameters.get("content")
@@ -75,6 +77,16 @@ def parse_tasks(tasks, connection, project_id, agents):
             and not isinstance(parameters["expected"], str)
         ):
             raise ValueError("Expected file content must be text")
+        if capability == "model.generate":
+            if not agent.get("provider") or not agent.get("model"):
+                raise ValueError("Choose a provider and model for the assigned agent")
+            prompt = parameters.get("prompt")
+            if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 16000:
+                raise ValueError("Model task needs a prompt of 1–16000 characters")
+            max_tokens = parameters.get("max_tokens", 2048)
+            if type(max_tokens) is not int or not 1 <= max_tokens <= 8192:
+                raise ValueError("Output token limit must be between 1 and 8192")
+            parameters["max_tokens"] = max_tokens
         # A version-check subprocess has no shared terminal input or file writes.
         definitions.append(
             TaskDefinition(

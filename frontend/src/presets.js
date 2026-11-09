@@ -116,6 +116,9 @@ export function makeAgent(roleKey, key, parent = "") {
     role_template: roleKey,
     reports_to: parent,
     max_concurrency: "1",
+    provider: "",
+    model: "",
+    collaborators: [],
   };
 }
 
@@ -139,6 +142,12 @@ export function changeRole(agent, roleKey) {
         ? next.responsibilities
         : agent.responsibilities,
     max_concurrency: agent.max_concurrency,
+    provider: agent.provider,
+    model: agent.model,
+    collaborators: [...(agent.collaborators || [])],
+    capabilities: agent.provider
+      ? [...new Set([...next.capabilities, "model.generate"])]
+      : next.capabilities,
   };
 }
 

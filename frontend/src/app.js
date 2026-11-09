@@ -1,6 +1,6 @@
 import { initializeAppearance, openAppearanceForm } from "./appearance.js";
 import { openImportForm } from "./import-form.js";
-import { openProviderForm } from "./provider-form.js";
+import { openModelConnections } from "./model-connections.js";
 import { openTeamForm } from "./team-form.js";
 import { projectView } from "./domain.js";
 import { openGoalForm, openProjectForm, openTaskDetails } from "./forms.js";
@@ -120,13 +120,17 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
    * Open the charter/team editor and select the project after it is persisted.
    */
   function createProject() {
-    dialog = openProjectForm(document, async (payload) => {
-      const result = await api.createProject(payload);
-      selectedProject = result.id;
-      tab = "overview";
-      await afterMutation();
-      notify("Project created. Its charter and assigned team are saved.");
-    });
+    dialog = openProjectForm(
+      document,
+      async (payload) => {
+        const result = await api.createProject(payload);
+        selectedProject = result.id;
+        tab = "overview";
+        await afterMutation();
+        notify("Project created. Its charter and assigned team are saved.");
+      },
+      snapshot.model_providers || [],
+    );
   }
   /**
    * Open task assignment for the selected project and show its work after saving.
@@ -166,6 +170,7 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
         notify("Team organization saved.");
       },
       selectedKey,
+      snapshot.model_providers || [],
     );
   }
 
@@ -226,7 +231,12 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
       else if (button.dataset.action === "appearance")
         dialog = openAppearanceForm(document);
       else if (button.dataset.action === "providers")
-        dialog = openProviderForm(document, api);
+        dialog = openModelConnections(
+          document,
+          api,
+          snapshot.features?.local_tools !== false,
+          afterMutation,
+        );
       else if (button.dataset.action === "refresh") await refresh();
     } catch (error) {
       showError(error);

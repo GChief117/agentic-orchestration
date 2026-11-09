@@ -4,7 +4,12 @@ import platform
 
 
 class LocalConnection:
-    CAPABILITIES = ("files.write", "files.inspect", "terminal.python_version")
+    CAPABILITIES = (
+        "files.write",
+        "files.inspect",
+        "terminal.python_version",
+        "model.generate",
+    )
 
     def __init__(self, workspace):
         """Resolve and create the root directory for this local execution target."""

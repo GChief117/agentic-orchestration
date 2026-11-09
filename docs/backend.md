@@ -1,6 +1,6 @@
 # Backend implementation
 
-The repository includes a small working backend foundation. A separate JavaScript frontend is served by the local application. It initializes greenfield projects with explicit charters and agent teams, runs assigned task graphs, persists their state, and performs bounded local file and terminal operations. It does not yet connect remote bridges, invoke model providers, or manage interactive agent sessions.
+The repository includes a small working backend foundation. A separate JavaScript frontend is served by the local application. It initializes greenfield projects with explicit charters and agent teams, runs assigned task graphs, persists their state, and performs bounded local file and terminal operations. It also runs explicit text-generation tasks through configured model provider APIs. Remote bridges and interactive tool-using agent sessions are not implemented.
 
 ## Code responsibilities
 
@@ -78,7 +78,7 @@ Team size is the persistent roster length and must match `team_size` on creation
 
 The overall `execution_limit` is mandatory; there is no baked-in worker count. Project and agent concurrency limits are explicit in the project definition. `target_limits` can further constrain a machine; when omitted, the local target inherits the supplied overall limit.
 
-A project with three agents can allow one, two, or three simultaneous tasks according to its limits. Idle agents remain assigned. These are logical agent identities and work assignments; creation does not launch three model processes. Instructions and reporting hierarchy are provided as execution context, but autonomous delegation and model-driven planning are not implemented.
+A project with three agents can allow one, two, or three simultaneous tasks according to its limits. Idle agents remain assigned. These are logical agent identities and work assignments; creation does not launch three model processes. Instructions, reporting hierarchy, and team relationships are provided as execution context; explicit provider-backed model tasks support collaboration handoffs. Automatic task planning and autonomous tool use are not implemented.
 
 Files live under `artifacts/projects/<project-id>/`. Identical relative filenames in separate projects do not collide. The artifact directory remains a local filesystem boundary, not a separate operating-system sandbox.
 
@@ -98,3 +98,5 @@ The larger [three-part design](architecture.md) remains a roadmap. Implemented b
 ## Organization edits
 
 `Engine.update_team` validates and atomically saves an idle project’s roster. Edits are rejected while tasks are queued, running, or cancelling. Existing agent IDs are preserved by project-local key; removing an agent with task history is rejected. New and unused agents can be added and removed, and reporting relationships must remain acyclic.
+
+Provider connection and model-task limits are described in [model execution](model-execution.md). The `models.py` adapter keeps credentials out of persistent state. Model tasks use the same scheduler, task dependencies, project boundaries, and receipts as local operations.

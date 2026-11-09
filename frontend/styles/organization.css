@@ -280,3 +280,35 @@
   stroke-width: 1.5;
   pointer-events: none;
 }
+
+/* Dashed peer links complement solid reporting lines without changing the tree. */
+.org-collaborations path {
+  fill: none;
+  stroke: var(--org-accent);
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+  pointer-events: none;
+}
+.collaborator-picker {
+  border: 1px solid var(--line);
+  padding: 12px;
+  margin: 0 0 18px;
+  border-radius: 8px;
+}
+.collaborator-picker label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.collaborator-picker p {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.chart-link-legend {
+  color: var(--muted);
+  font-size: 11px;
+  margin: 8px 0;
+}

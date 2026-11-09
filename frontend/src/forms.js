@@ -34,6 +34,8 @@ export function openGoalForm(document, view, onSubmit) {
       path: "",
       content: "",
       expected: "",
+      prompt: "",
+      max_tokens: "2048",
       compare: false,
       depends_on: [],
     };
@@ -47,9 +49,16 @@ export function openGoalForm(document, view, onSubmit) {
     return [...content.querySelectorAll("[data-task]")].map((row) => ({
       id: row.dataset.task,
       ...Object.fromEntries(
-        ["title", "agent", "capability", "path", "content", "expected"].map(
-          (field) => [field, value(row, field)],
-        ),
+        [
+          "title",
+          "agent",
+          "capability",
+          "path",
+          "content",
+          "expected",
+          "prompt",
+          "max_tokens",
+        ].map((field) => [field, value(row, field)]),
       ),
       compare: Boolean(row.querySelector('[data-field="compare"]')?.checked),
       depends_on: [...row.querySelectorAll("[data-dependency]:checked")].map(
@@ -61,14 +70,14 @@ export function openGoalForm(document, view, onSubmit) {
    * Render task editors, constrain action choices by agent, and bind graph editing.
    */
   function render() {
-    content.innerHTML = `<form data-goal-form><div class="dialog-body"><div class="notice info">Tasks run through the connected local backend. Each task needs an assigned agent with the right capability.</div>${input("Goal title", "goal-title", title, { required: true })}<div class="form-section-heading"><h3>Tasks & dependencies</h3><button class="text-button" type="button" data-example>Use release example</button></div>${tasks
+    content.innerHTML = `<form data-goal-form><div class="dialog-body"><div class="notice info">Tasks follow their dependencies and assigned agent settings. Model tasks call the chosen provider and may incur API charges.</div>${input("Goal title", "goal-title", title, { required: true })}<div class="form-section-heading"><h3>Tasks & dependencies</h3><button class="text-button" type="button" data-example>Use release example</button></div>${tasks
       .map((task, index) => {
         const agent =
           view.agents.find((item) => item.key === task.agent) || view.agents[0];
         const capabilities = agent.capabilities;
         if (!capabilities.includes(task.capability))
           task.capability = capabilities[0];
-        return `<fieldset class="task-editor" data-task="${e(task.id)}"><legend>Step ${index + 1} · ${e(task.id)}</legend>${input("Task title", "title", task.title, { required: true })}<div class="form-grid"><label class="field"><span>Assigned agent</span><select aria-label="Assigned agent" data-field="agent">${view.agents.map((candidate) => `<option value="${e(candidate.key)}" ${agent.key === candidate.key ? "selected" : ""}>${e(candidate.name)} · ${e(candidate.role)}</option>`).join("")}</select></label><label class="field"><span>Action</span><select aria-label="Action" data-field="capability">${capabilities.map((cap) => `<option value="${e(cap)}" ${task.capability === cap ? "selected" : ""}>${e(ACTIONS[cap]?.label || cap)}</option>`).join("")}</select></label></div>${task.capability.startsWith("files.") ? input("Project-relative file path", "path", task.path, { required: true, hint: "For example: release/checklist.txt" }) : '<p class="muted">Checks the configured Python runtime on the local target.</p>'}${task.capability === "files.write" ? input("File contents", "content", task.content, { textarea: true }) : ""}${task.capability === "files.inspect" ? `<label class="checkbox-line"><input type="checkbox" data-field="compare" ${task.compare ? "checked" : ""}> Compare exact contents</label>${task.compare ? input("Expected contents", "expected", task.expected, { textarea: true }) : '<p class="muted">Checks that the file is readable and records its digest.</p>'}` : ""}<div class="dependency-picker"><span class="label">Wait for these tasks to be verified</span>${
+        return `<fieldset class="task-editor" data-task="${e(task.id)}"><legend>Step ${index + 1} · ${e(task.id)}</legend>${input("Task title", "title", task.title, { required: true })}<div class="form-grid"><label class="field"><span>Assigned agent</span><select aria-label="Assigned agent" data-field="agent">${view.agents.map((candidate) => `<option value="${e(candidate.key)}" ${agent.key === candidate.key ? "selected" : ""}>${e(candidate.name)} · ${e(candidate.role)}</option>`).join("")}</select></label><label class="field"><span>Action</span><select aria-label="Action" data-field="capability">${capabilities.map((cap) => `<option value="${e(cap)}" ${task.capability === cap ? "selected" : ""}>${e(ACTIONS[cap]?.label || cap)}</option>`).join("")}</select></label></div>${task.capability.startsWith("files.") || task.capability === "model.generate" ? input("Project-relative file path", "path", task.path, { required: true, hint: "For example: release/checklist.txt" }) : '<p class="muted">Checks the configured Python runtime on the local target.</p>'}${task.capability === "model.generate" ? `<p class="muted">${e(agent.provider || "No provider")} · ${e(agent.model || "No model selected")}</p>${input("Task prompt", "prompt", task.prompt || "", { required: true, textarea: true, rows: 5 })}${input("Maximum output tokens", "max_tokens", task.max_tokens || "2048", { number: true })}` : ""}${task.capability === "files.write" ? input("File contents", "content", task.content, { textarea: true }) : ""}${task.capability === "files.inspect" ? `<label class="checkbox-line"><input type="checkbox" data-field="compare" ${task.compare ? "checked" : ""}> Compare exact contents</label>${task.compare ? input("Expected contents", "expected", task.expected, { textarea: true }) : '<p class="muted">Checks that the file is readable and records its digest.</p>'}` : ""}<div class="dependency-picker"><span class="label">Wait for these tasks to be verified</span>${
           tasks
             .filter((other) => other.id !== task.id)
             .map(

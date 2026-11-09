@@ -79,6 +79,16 @@ class Store:
             for column in additions:
                 if column not in columns:
                     self.db.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
+        agent_columns = {
+            row["name"] for row in self.db.execute("PRAGMA table_info(agents)")
+        }
+        for name, declaration in {
+            "provider": "TEXT",
+            "model": "TEXT",
+            "collaborators": "TEXT NOT NULL DEFAULT '[]'",
+        }.items():
+            if name not in agent_columns:
+                self.db.execute(f"ALTER TABLE agents ADD COLUMN {name} {declaration}")
         # Old records remain inspectable, but cannot run without a project or owner.
         self.db.execute(
             """UPDATE tasks SET state='blocked',
@@ -106,7 +116,7 @@ class Store:
         )
         for agent in definition.agents:
             self.db.execute(
-                "INSERT INTO agents VALUES(?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO agents (id,project_id,key,name,role,instructions,responsibilities,capabilities,reports_to,max_concurrency,provider,model,collaborators) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     agent_ids[agent.key],
                     project_id,
@@ -118,6 +128,9 @@ class Store:
                     json.dumps(agent.capabilities),
                     agent_ids.get(agent.reports_to),
                     agent.max_concurrency,
+                    agent.provider,
+                    agent.model,
+                    json.dumps(agent.collaborators),
                 ),
             )
         self.event(
@@ -153,11 +166,12 @@ class Store:
         for agent in definition.agents:
             self.db.execute(
                 """INSERT INTO agents
-                (id,project_id,key,name,role,instructions,responsibilities,capabilities,reports_to,max_concurrency)
-                VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+                (id,project_id,key,name,role,instructions,responsibilities,capabilities,reports_to,max_concurrency,provider,model,collaborators)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
                 name=excluded.name,role=excluded.role,instructions=excluded.instructions,
                 responsibilities=excluded.responsibilities,capabilities=excluded.capabilities,
-                reports_to=excluded.reports_to,max_concurrency=excluded.max_concurrency""",
+                reports_to=excluded.reports_to,max_concurrency=excluded.max_concurrency,
+                provider=excluded.provider,model=excluded.model,collaborators=excluded.collaborators""",
                 (
                     identifiers[agent.key],
                     project_id,
@@ -169,6 +183,9 @@ class Store:
                     json.dumps(agent.capabilities),
                     identifiers.get(agent.reports_to),
                     agent.max_concurrency,
+                    agent.provider,
+                    agent.model,
+                    json.dumps(agent.collaborators),
                 ),
             )
         for key, agent in existing.items():
@@ -259,6 +276,7 @@ class Store:
             "source_markers",
             "responsibilities",
             "capabilities",
+            "collaborators",
         ):
             if key in value:
                 value[key] = json.loads(value[key]) if value[key] else None

@@ -64,6 +64,7 @@ STATIC_ASSETS = {
             "import-form",
             "appearance",
             "branding",
+            "model-connections",
         )
     },
 }
@@ -156,7 +157,11 @@ def make_handler(
 
         def snapshot(self):
             """Describe server features without exposing paths or checking local tools in hosted mode."""
-            return {**engine.snapshot(), "features": {"local_tools": local_features}}
+            return {
+                **engine.snapshot(),
+                "features": {"local_tools": local_features},
+                "model_providers": engine.models.catalog(),
+            }
 
         def do_GET(self):
             """Route frontend assets and reads; require authorization for API records.
@@ -215,6 +220,8 @@ def make_handler(
                 )
             elif route == "/api/projects/scan-roots":
                 self.send(HTTPStatus.OK, {"roots": engine.discovery.roots()})
+            elif route == "/api/models":
+                self.send(HTTPStatus.OK, {"providers": engine.models.catalog()})
             elif route == "/api/providers":
                 self.send(HTTPStatus.OK, {"providers": engine.providers.list()})
             elif route == "/api/state":
@@ -279,7 +286,21 @@ def make_handler(
                     raise ValueError(
                         "Local computer tools are unavailable in hosted mode"
                     )
-                if route == "/api/projects/scan":
+                if route == "/api/models/connect":
+                    self.send(
+                        HTTPStatus.OK,
+                        {
+                            "providers": engine.models.connect(
+                                data.get("provider"), data.get("key")
+                            )
+                        },
+                    )
+                elif route == "/api/models/disconnect":
+                    self.send(
+                        HTTPStatus.OK,
+                        {"providers": engine.models.disconnect(data.get("provider"))},
+                    )
+                elif route == "/api/projects/scan":
                     self.send(
                         HTTPStatus.OK,
                         engine.scan_projects(
@@ -397,7 +418,7 @@ def main():
         f"Backend API: {origin or f'http://127.0.0.1:{server.server_port}'}", flush=True
     )
     print(
-        "Deterministic tasks only; model execution and remote bridges are not connected.",
+        "Local and provider-backed text tasks; model calls require configured API credentials.",
         flush=True,
     )
     try:

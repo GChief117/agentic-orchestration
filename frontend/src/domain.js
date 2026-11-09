@@ -2,6 +2,7 @@
  * Human-readable labels for capabilities supported by the local backend.
  */
 export const ACTIONS = {
+  "model.generate": { label: "Run model task", short: "Model task" },
   "files.write": { label: "Write a file", short: "File write" },
   "files.inspect": { label: "Inspect a file", short: "File check" },
   "terminal.python_version": {
@@ -123,6 +124,9 @@ export function projectPayload(draft) {
     responsibilities: lines(agent.responsibilities),
     capabilities: [...agent.capabilities],
     reports_to: agent.reports_to || null,
+    provider: agent.provider || null,
+    model: agent.model || null,
+    collaborators: [...(agent.collaborators || [])],
     max_concurrency: positive(
       agent.max_concurrency,
       `Concurrency for agent ${index + 1}`,
@@ -197,13 +201,27 @@ export function goalPayload(projectId, title, drafts, agents) {
         "Assign each task to an agent with the required capability.",
       );
     const parameters = {};
-    if (draft.capability.startsWith("files.")) {
+    if (
+      draft.capability.startsWith("files.") ||
+      draft.capability === "model.generate"
+    ) {
       parameters.path = required(draft.path, "File path");
       if (
         parameters.path.startsWith("/") ||
         parameters.path.split(/[\\/]/).includes("..")
       )
         throw new Error("Use a relative path inside the project workspace.");
+    }
+    if (draft.capability === "model.generate") {
+      if (!agent.provider || !agent.model)
+        throw new Error("Choose a provider and model for this agent first.");
+      parameters.prompt = required(draft.prompt, "Task prompt");
+      parameters.max_tokens = positive(
+        draft.max_tokens || "2048",
+        "Output token limit",
+      );
+      if (parameters.max_tokens > 8192)
+        throw new Error("Use an output token limit of 8192 or less.");
     }
     if (draft.capability === "files.write")
       parameters.content = draft.content ?? "";
@@ -309,7 +327,7 @@ export function starterTasks(agents) {
    */
   const owner = (capability) =>
     agents.find((agent) => agent.capabilities.includes(capability))?.key;
-  if (!Object.keys(ACTIONS).every(owner))
+  if (!["files.write", "files.inspect", "terminal.python_version"].every(owner))
     throw new Error(
       "This example needs agents for file writing, file inspection, and runtime checks.",
     );

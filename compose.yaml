@@ -7,6 +7,9 @@ services:
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://127.0.0.1:8765}
       ACCESS_PASSWORD: ${ACCESS_PASSWORD:?Set a private ACCESS_PASSWORD of at least 16 characters}
       EXECUTION_LIMIT: ${EXECUTION_LIMIT:?Set an explicit EXECUTION_LIMIT}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     volumes:
       - workspace-data:/data
     stop_grace_period: 30s

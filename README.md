@@ -17,7 +17,7 @@ python3 -m orchestration examples/backend_goal.json --project examples/greenfiel
 python3 app.py --port 8765 --execution-limit 4
 ```
 
-The first command runs an explicit task graph and prints its result. The second starts the JavaScript project workspace and its authenticated JSON API at `http://127.0.0.1:8765`. The backend initializes projects with charters and assigned agent teams, and persists goals, tasks, attempts, and receipts, enforces dependencies and resource conflicts, and executes bounded local operations. Remote bridges and model execution adapters are not connected yet. The Model connections dialog can launch sign-in through installed official provider tools; those accounts are not yet used to execute tasks. See the [backend implementation](docs/backend.md) for the module map, request flow, API, and limitations.
+The first command runs an explicit task graph and prints its result. The second starts the JavaScript project workspace and its authenticated JSON API at `http://127.0.0.1:8765`. The backend initializes projects with charters and assigned agent teams, and persists goals, tasks, attempts, and receipts, enforces dependencies and resource conflicts, and executes bounded local operations. Model tasks can call OpenAI, Claude, or Gemini through an API key connected in Model connections. Each agent has its own provider, model, and collaboration links. Remote bridges and autonomous tool use are not implemented. See the [backend implementation](docs/backend.md) for the module map, request flow, API, and limitations.
 
 ## Portable packaging
 
@@ -49,15 +49,19 @@ Import registers the canonical source location and an editable three-role team. 
 
 Discovery routes use the same local session authorization as other APIs: `GET /api/projects/scan-roots`, `POST /api/projects/scan`, and `POST /api/projects/import`.
 
-## Provider sign-in
+## Model execution and collaboration
 
-Open **Model connections** in the workspace header. On macOS, the sign-in buttons open installed Codex CLI, Claude Code, or Gemini CLI in Terminal, where you finish the provider’s own browser flow. The app does not receive, copy, or store OAuth tokens. Install missing tools using the setup guides linked in the dialog. Other operating systems show the manual sign-in commands.
+1. Open **Model connections**, enter a provider API key, and connect. Available models are loaded from that provider. API usage may incur provider charges.
+2. Open a project's team editor. Select an agent, choose **Model provider** and **Model**, and connect peers under **Works with**.
+3. Add a goal with **Run model task** steps. Set each prompt, output artifact path, and maximum output tokens. Add dependencies wherever one step must wait for another.
 
-Refresh status after signing in. OpenAI and Claude status comes from their CLI status commands. Gemini remains **unverified** because this integration has no reliable status command for it. A successful launch is not proof of authentication, and authenticated tools are not yet wired into the task executor. Existing API-key authentication in a tool may also appear as signed in; this is not an account identity check.
+The scheduler enforces task order, project/agent capacity, and file conflicts. Model tasks receive the project charter, their role/instructions, team roster, and available completed outputs from explicit dependencies and collaborating agents. Dashed chart links show collaboration; solid links show reporting. Collaboration does not make tasks wait automatically. Only task dependencies impose execution order.
 
-The routes `GET /api/providers` and `POST /api/providers/sign-in` require the same local session and origin protections as the rest of the API. Sign-in launches only after an explicit request. Generated launcher scripts contain only fixed commands and live in the ignored runtime directory.
+Results are saved as project-scoped text artifacts with provider, model, usage, and response metadata. A completed model response is not a guarantee of factual correctness; assign a reviewer for content review. The model cannot directly execute shell commands or change project source files through this action. No provider fallback or automatic retry is performed.
 
-Official references: [Codex authentication](https://developers.openai.com/codex/auth), [Claude Code authentication](https://code.claude.com/docs/en/authentication), [Gemini CLI authentication](https://geminicli.com/docs/get-started/authentication/).
+API keys entered in the UI remain in server memory and are cleared on restart. Alternatively configure `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY` in the server environment; those reload on restart. Never commit credentials. Disconnect removes the running process's key. Local CLI subscription sign-in remains available from **Manage local CLI sign-in**, but those sessions are separate from API execution.
+
+See [model execution](docs/model-execution.md) for limits and provider references.
 
 ## Three parts, one repository
 

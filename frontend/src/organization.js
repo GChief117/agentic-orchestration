@@ -71,11 +71,12 @@ export function removeAgent(agents, key) {
   if (!removed) throw new Error("Select an agent to remove.");
   return agents
     .filter((agent) => agent.key !== key)
-    .map((agent) =>
-      agent.reports_to === key
-        ? { ...agent, reports_to: removed.reports_to || "" }
-        : agent,
-    );
+    .map((agent) => ({
+      ...agent,
+      reports_to:
+        agent.reports_to === key ? removed.reports_to || "" : agent.reports_to,
+      collaborators: (agent.collaborators || []).filter((peer) => peer !== key),
+    }));
 }
 
 /** Compute a centered, deterministic tree layout for SVG cards and connector paths. */
@@ -157,7 +158,27 @@ export function renderOrganizationChart(
     width: layout.width,
     height: layout.height,
   };
+  const byKey = new Map(layout.nodes.map((node) => [node.key, node]));
+  const seen = new Set();
+  const links = [];
+  for (const node of layout.nodes) {
+    for (const key of node.collaborators || []) {
+      const other = byKey.get(key);
+      const pair = JSON.stringify([node.key, key].sort());
+      if (!other || seen.has(pair)) continue;
+      seen.add(pair);
+      const first = node.x < other.x ? node : other;
+      const second = first === node ? other : node;
+      const x1 = first.x + first.width,
+        y1 = first.y + first.height / 2;
+      const x2 = second.x,
+        y2 = second.y + second.height / 2;
+      links.push(
+        `<path d="M ${x1} ${y1} C ${x1 + 16} ${y1}, ${x2 - 16} ${y2}, ${x2} ${y2}"><title>${e(node.name)} works with ${e(other.name)}</title></path>`,
+      );
+    }
+  }
   const clip = (text, limit) =>
     text.length > limit ? text.slice(0, limit - 1) + "…" : text;
-  return `<div class="organization-chart ${interactive ? "editable-chart" : ""}"><svg data-org-svg viewBox="${box.x} ${box.y} ${box.width} ${box.height}" preserveAspectRatio="xMidYMid meet" role="group" aria-label="Agent reporting organization"><g class="org-connectors">${layout.edges.map((path) => `<path d="${path}"/>`).join("")}</g>${layout.nodes.map((node) => `<g class="org-node ${node.owner ? "owner-node" : "org-card"} ${node.key === selected ? "selected" : ""}" data-org-node="${e(node.key)}" ${interactive ? `data-org-agent="${e(node.key)}" role="button" tabindex="0" aria-label="${node.owner ? "Select project owner" : `Edit ${e(node.name)}`}"` : ""} transform="translate(${node.x} ${node.y})"><title>${e(node.name)} · ${e(node.role)}</title><rect width="${node.width}" height="${node.height}" rx="12"/><circle cx="82" cy="27" r="15"/><text class="node-initial" x="82" y="31">${e(node.owner ? "You" : node.name.slice(0, 1).toUpperCase())}</text><text class="node-name" x="82" y="63">${e(clip(node.name, 20))}</text><text class="node-role" x="82" y="83">${e(clip(node.role, 26))}</text>${node.state === "busy" ? '<circle class="node-busy" cx="149" cy="15" r="4"/>' : ""}</g>`).join("")}<path class="org-drag-link" data-drag-link d=""/></svg></div>`;
+  return `<div class="organization-chart ${interactive ? "editable-chart" : ""}"><svg data-org-svg viewBox="${box.x} ${box.y} ${box.width} ${box.height}" preserveAspectRatio="xMidYMid meet" role="group" aria-label="Agent reporting organization"><g class="org-collaborations">${links.join("")}</g><g class="org-connectors">${layout.edges.map((path) => `<path d="${path}"/>`).join("")}</g>${layout.nodes.map((node) => `<g class="org-node ${node.owner ? "owner-node" : "org-card"} ${node.key === selected ? "selected" : ""}" data-org-node="${e(node.key)}" ${interactive ? `data-org-agent="${e(node.key)}" role="button" tabindex="0" aria-label="${node.owner ? "Select project owner" : `Edit ${e(node.name)}`}"` : ""} transform="translate(${node.x} ${node.y})"><title>${e(node.name)} · ${e(node.role)}</title><rect width="${node.width}" height="${node.height}" rx="12"/><circle cx="82" cy="27" r="15"/><text class="node-initial" x="82" y="31">${e(node.owner ? "You" : node.name.slice(0, 1).toUpperCase())}</text><text class="node-name" x="82" y="63">${e(clip(node.name, 20))}</text><text class="node-role" x="82" y="83">${e(clip(node.role, 26))}</text>${node.state === "busy" ? '<circle class="node-busy" cx="149" cy="15" r="4"/>' : ""}</g>`).join("")}<path class="org-drag-link" data-drag-link d=""/></svg></div>`;
 }
