@@ -17,7 +17,7 @@ python3 -m orchestration examples/backend_goal.json --project examples/greenfiel
 python3 app.py --port 8765 --execution-limit 4
 ```
 
-The first command runs an explicit task graph and prints its result. The second starts the JavaScript project workspace and its authenticated JSON API at `http://127.0.0.1:8765`. The backend initializes projects with charters and assigned agent teams, and persists goals, tasks, attempts, and receipts, enforces dependencies and resource conflicts, and executes bounded local operations. Model tasks can call OpenAI, Claude, or Gemini through an API key connected in Model connections. Each agent has its own provider, model, and collaboration links. Remote bridges and autonomous tool use are not implemented. See the [backend implementation](docs/backend.md) for the module map, request flow, API, and limitations.
+The first command runs an explicit task graph and prints its result. The second starts the JavaScript project workspace and its authenticated JSON API at `http://127.0.0.1:8765`. The backend initializes projects with charters and assigned agent teams, persists goals, tasks, attempts, and receipts, enforces dependencies and resource conflicts, and executes bounded local operations. Model tasks use OpenAI, Claude, or Gemini through a saved local CLI sign-in or an API key. Each agent has its own execution method, provider, model, and collaboration links. Remote bridges and autonomous tool use are not implemented. See the [backend implementation](docs/backend.md) for the module map, request flow, API, and limitations.
 
 ## Portable packaging
 
@@ -51,15 +51,15 @@ Discovery routes use the same local session authorization as other APIs: `GET /a
 
 ## Model execution and collaboration
 
-1. Open **Model connections → API keys**, enter a provider API key, and connect. Available models are loaded from that provider. API usage may incur provider charges.
-2. Open a project's team editor. Select an agent, choose **Model provider** and **Model**, and connect peers by dragging a card’s **+ handle** onto another agent. Alternatively choose **Connect agents** and click two cards, or use **Works with** in the inspector.
-3. Add a goal with **Run model task** steps. Set each prompt, output artifact path, and maximum output tokens. Add dependencies wherever one step must wait for another.
+1. Open **Model connections → Local CLI**. Use your saved Codex CLI, Claude Code, or Antigravity (`agy`) account. The screen checks sign-in automatically and updates when confirmed. Alternatively connect a provider under **API keys**.
+2. Open a project's team editor. Select an agent, choose **Execution method**, **Model provider**, and **Model**, and connect peers by dragging a card’s **+ handle** onto another agent. **CLI default** uses the tool's default model. Alternatively choose **Connect agents** and click two cards, or use **Works with** in the inspector.
+3. Add a goal with **Run model task** steps. Set each prompt, output artifact path, and output tokens. CLI output tokens are a requested target, not a guaranteed usage cap. Add dependencies wherever one step must wait for another.
 
 The scheduler enforces task order, project/agent capacity, and file conflicts. Model tasks receive explicitly selected source files, the project charter, their role/instructions, team roster, and available completed outputs from explicit dependencies and collaborating agents. Dashed chart links show collaboration; solid links show reporting. Collaboration does not make tasks wait automatically. Only task dependencies impose execution order.
 
-Results are saved as project-scoped text artifacts with provider, model, usage, and response metadata. A completed model response is not a guarantee of factual correctness; assign a reviewer for content review. The model cannot directly execute shell commands or change project source files through this action. No provider fallback or automatic retry is performed.
+Results are saved as project-scoped text artifacts with execution method, provider, model, usage, and response metadata. A completed model response is not a guarantee of factual correctness; assign a reviewer for content review. CLI turns run in isolated temporary directories with model tools disabled or denied. The model cannot directly execute shell commands or change project source files through this action. No provider fallback or automatic retry is performed.
 
-API keys entered in the UI remain in server memory and are cleared on restart. Alternatively configure `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY` in the server environment; those reload on restart. Never commit credentials. Disconnect removes the running process's key. In a local workspace, **Model connections** opens on **Local CLI**, with **API keys** in the second tab. Local CLI subscription sessions are separate from API execution. Hosted workspaces show API connections only.
+CLI credentials remain in their native credential stores and are reused across app restarts. API keys entered in the UI remain in server memory and are cleared on restart. Alternatively configure `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY` in the server environment; those reload on restart. Never commit credentials. API disconnect removes the running process's key. Hosted workspaces use API connections only; local CLI execution is unavailable there. Existing agents retain API execution until their execution method is changed explicitly.
 
 See [model execution](docs/model-execution.md) for limits and provider references.
 

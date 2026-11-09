@@ -100,18 +100,33 @@ export function openGoalForm(document, view, onSubmit, loadSourceFiles = null) {
     if (!view.project.source_path) return "";
     return `<details class="source-picker"><summary>Project source files · <span data-source-count>${(task.source_files || []).length}</span> selected</summary><p class="muted">${e(view.project.source_path)}</p><p>Choose up to 8 files. Their contents are sent to this agent’s provider when you start the task. Original files are not modified.</p>${sourcesLoading ? '<p class="muted">Loading filenames…</p>' : sourceError ? `<p role="alert">${e(sourceError)}</p>` : `<input aria-label="Filter project files" data-source-filter placeholder="Filter filenames" value="${e(task.source_filter || "")}"><div class="source-options" data-source-options>${sourceOptions(task)}</div><small>${sourceFiles.length} available files. Up to 100 matches shown.${sourceTruncated ? " Listing was limited; narrow the project folder if needed." : ""}</small>`}</details>`;
   }
+  /** Explain the difference between enforced API limits and a CLI output request. */
+  function tokenLimitInput(agent, task) {
+    const cli = agent.execution_mode === "cli";
+    return input(
+      cli ? "Requested output tokens" : "Maximum output tokens",
+      "max_tokens",
+      task.max_tokens || "2048",
+      {
+        number: true,
+        hint: cli
+          ? "The CLI may use a different number of tokens. Output is limited to 64 KiB and execution to 120 seconds; this is not a billing cap."
+          : undefined,
+      },
+    );
+  }
   /**
    * Render task editors, constrain action choices by agent, and bind graph editing.
    */
   function render() {
-    content.innerHTML = `<form data-goal-form><div class="dialog-body"><div class="notice info">Tasks follow their dependencies and assigned agent settings. Model tasks call the chosen provider and may incur API charges.</div>${input("Goal title", "goal-title", title, { required: true })}<div class="form-section-heading"><h3>Tasks & dependencies</h3><button class="text-button" type="button" data-example>Use release example</button></div>${tasks
+    content.innerHTML = `<form data-goal-form><div class="dialog-body"><div class="notice info">Tasks follow their dependencies and assigned agent settings. Model tasks use the assigned Local CLI or API connection and may consume your provider usage allowance.</div>${input("Goal title", "goal-title", title, { required: true })}<div class="form-section-heading"><h3>Tasks & dependencies</h3><button class="text-button" type="button" data-example>Use release example</button></div>${tasks
       .map((task, index) => {
         const agent =
           view.agents.find((item) => item.key === task.agent) || view.agents[0];
         const capabilities = agent.capabilities;
         if (!capabilities.includes(task.capability))
           task.capability = capabilities[0];
-        return `<fieldset class="task-editor" data-task="${e(task.id)}"><legend>Step ${index + 1} · ${e(task.id)}</legend>${input("Task title", "title", task.title, { required: true })}<div class="form-grid"><label class="field"><span>Assigned agent</span><select aria-label="Assigned agent" data-field="agent">${view.agents.map((candidate) => `<option value="${e(candidate.key)}" ${agent.key === candidate.key ? "selected" : ""}>${e(candidate.name)} · ${e(candidate.role)}</option>`).join("")}</select></label><label class="field"><span>Action</span><select aria-label="Action" data-field="capability">${capabilities.map((cap) => `<option value="${e(cap)}" ${task.capability === cap ? "selected" : ""}>${e(ACTIONS[cap]?.label || cap)}</option>`).join("")}</select></label></div>${task.capability.startsWith("files.") || task.capability === "model.generate" ? input("Project-relative file path", "path", task.path, { required: true, hint: "For example: release/checklist.txt" }) : '<p class="muted">Checks the configured Python runtime on the local target.</p>'}${task.capability === "model.generate" ? `<p class="muted">${e(agent.provider || "No provider")} · ${e(agent.model || "No model selected")}</p>${input("Task prompt", "prompt", task.prompt || "", { required: true, textarea: true, rows: 5 })}${input("Maximum output tokens", "max_tokens", task.max_tokens || "2048", { number: true })}${sourcePicker(task)}` : ""}${task.capability === "files.write" ? input("File contents", "content", task.content, { textarea: true }) : ""}${task.capability === "files.inspect" ? `<label class="checkbox-line"><input type="checkbox" data-field="compare" ${task.compare ? "checked" : ""}> Compare exact contents</label>${task.compare ? input("Expected contents", "expected", task.expected, { textarea: true }) : '<p class="muted">Checks that the file is readable and records its digest.</p>'}` : ""}<div class="dependency-picker"><span class="label">Wait for these tasks to be verified</span>${
+        return `<fieldset class="task-editor" data-task="${e(task.id)}"><legend>Step ${index + 1} · ${e(task.id)}</legend>${input("Task title", "title", task.title, { required: true })}<div class="form-grid"><label class="field"><span>Assigned agent</span><select aria-label="Assigned agent" data-field="agent">${view.agents.map((candidate) => `<option value="${e(candidate.key)}" ${agent.key === candidate.key ? "selected" : ""}>${e(candidate.name)} · ${e(candidate.role)}</option>`).join("")}</select></label><label class="field"><span>Action</span><select aria-label="Action" data-field="capability">${capabilities.map((cap) => `<option value="${e(cap)}" ${task.capability === cap ? "selected" : ""}>${e(ACTIONS[cap]?.label || cap)}</option>`).join("")}</select></label></div>${task.capability.startsWith("files.") || task.capability === "model.generate" ? input("Project-relative file path", "path", task.path, { required: true, hint: "For example: release/checklist.txt" }) : '<p class="muted">Checks the configured Python runtime on the local target.</p>'}${task.capability === "model.generate" ? `<p class="muted">${agent.execution_mode === "cli" ? "Local CLI" : "API key"} · ${e(agent.provider || "No provider")} · ${e(agent.model || "No model selected")}</p>${input("Task prompt", "prompt", task.prompt || "", { required: true, textarea: true, rows: 5 })}${tokenLimitInput(agent, task)}${sourcePicker(task)}` : ""}${task.capability === "files.write" ? input("File contents", "content", task.content, { textarea: true }) : ""}${task.capability === "files.inspect" ? `<label class="checkbox-line"><input type="checkbox" data-field="compare" ${task.compare ? "checked" : ""}> Compare exact contents</label>${task.compare ? input("Expected contents", "expected", task.expected, { textarea: true }) : '<p class="muted">Checks that the file is readable and records its digest.</p>'}` : ""}<div class="dependency-picker"><span class="label">Wait for these tasks to be verified</span>${
           tasks
             .filter((other) => other.id !== task.id)
             .map(

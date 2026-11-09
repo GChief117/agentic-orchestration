@@ -1,0 +1,217 @@
+"""Native CLI adapters exercised with fake models, never real account requests."""
+
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import unittest
+from unittest.mock import patch
+
+from orchestration.cli_models import CLIRuntime
+
+
+class CLIRuntimeTests(unittest.TestCase):
+    def test_refresh_uses_native_checks_but_catalog_is_cached_and_redacted(self):
+        calls = []
+
+        def run(args, stdin, directory, timeout, cancelled):
+            calls.append(args)
+            if args[-2:] == ["debug", "models"]:
+                text = json.dumps({"models": [{"slug": "test-model"}]})
+            elif args[-1] == "models":
+                text = "gemini-test\tGemini test\n"
+            elif args[-1] == "--json":
+                text = '{"loggedIn":true,"token":"PRIVATE"}'
+            else:
+                text = "Logged in"
+            return subprocess.CompletedProcess(args, 0, text.encode(), b"")
+
+        runtime = CLIRuntime(runner=run)
+        self.assertEqual(calls, [])
+        self.assertFalse(runtime.ready("gemini"))
+        with patch(
+            "orchestration.cli_models.shutil.which",
+            side_effect=lambda key: "/tool/" + key,
+        ):
+            runtime.refresh()
+            self.assertTrue(all(item["configured"] for item in runtime.catalog()))
+            self.assertEqual(
+                runtime.status("gemini")["models"], ["default", "gemini-test"]
+            )
+            self.assertEqual(
+                runtime.status("openai")["models"], ["default", "test-model"]
+            )
+            count = len(calls)
+            runtime.catalog()
+            runtime.status("claude")
+            runtime.refresh()
+            self.assertEqual(len(calls), count)
+        self.assertNotIn("PRIVATE", json.dumps(runtime.catalog()))
+
+    def test_metadata_distinguishes_explicit_logout_from_transient_failure(self):
+        def run(args, *_rest):
+            message = (
+                b"Not logged in" if "login" in args else b"network unavailable PRIVATE"
+            )
+            return subprocess.CompletedProcess(args, 1, b"", message)
+
+        runtime = CLIRuntime(runner=run)
+        with patch("orchestration.cli_models.shutil.which", return_value="/tool/bin"):
+            runtime.refresh()
+        self.assertEqual(runtime.status("openai")["state"], "signed_out")
+        self.assertEqual(runtime.status("gemini")["state"], "unverified")
+        self.assertEqual(runtime.status("claude")["state"], "unverified")
+        self.assertNotIn("PRIVATE", json.dumps(runtime.catalog()))
+
+    def test_missing_binaries_never_run_a_command(self):
+        runtime = CLIRuntime(runner=lambda *_args: self.fail("No process expected"))
+        with patch("orchestration.cli_models.shutil.which", return_value=None):
+            runtime.refresh()
+            self.assertTrue(
+                all(item["state"] == "not_installed" for item in runtime.catalog())
+            )
+            with self.assertRaisesRegex(ValueError, "Install"):
+                runtime.generate("gemini", "default", "system", "task", 20)
+
+    def test_generates_with_fixed_arguments_private_stdin_and_isolated_directory(self):
+        samples = {
+            "openai": "\n".join(
+                [
+                    '{"type":"thread.started","thread_id":"run-1"}',
+                    '{"type":"item.completed","item":{"type":"agent_message","text":"Done"}}',
+                    '{"type":"turn.completed","usage":{"output_tokens":1}}',
+                ]
+            ),
+            "claude": '{"type":"result","subtype":"success","result":"Done","usage":{"output_tokens":1},"session_id":"run-1"}',
+            "gemini": '{"event":"result","result":{"status":"SUCCESS","response":"Done","usage":{"output_tokens":1},"conversation_id":"run-1"}}',
+        }
+        calls = []
+        for provider, sample in samples.items():
+            with self.subTest(provider=provider):
+
+                def run(args, stdin, directory, timeout, cancelled):
+                    self.assertTrue(Path(directory).is_dir())
+                    self.assertEqual(list(Path(directory).iterdir()), [])
+                    self.assertIn(b"private task", stdin)
+                    self.assertNotIn("private task", " ".join(args))
+                    self.assertNotIn("--dangerously-skip-permissions", args)
+                    self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", args)
+                    calls.append((args, stdin, directory))
+                    return subprocess.CompletedProcess(args, 0, sample.encode(), b"")
+
+                runtime = CLIRuntime(runner=run)
+                with patch(
+                    "orchestration.cli_models.shutil.which", return_value="/tool/bin"
+                ):
+                    result = runtime.generate(
+                        provider, "default", "instructions", "private task", 20
+                    )
+                self.assertEqual(result["text"], "Done")
+                self.assertTrue(result["complete"])
+                self.assertEqual(result["response_id"], "run-1")
+                self.assertFalse(result["token_limit_enforced"])
+                self.assertFalse(Path(calls[-1][2]).exists())
+        self.assertIn("read-only", calls[0][0])
+        self.assertIn("features.shell_tool=false", calls[0][0])
+        self.assertEqual(calls[1][0][calls[1][0].index("--tools") + 1], "")
+        settings = json.loads(calls[2][0][calls[2][0].index("--settings") + 1])
+        self.assertIn("command(*)", settings["permissions"]["deny"])
+        self.assertIn("read_file(*)", settings["permissions"]["deny"])
+
+    def test_incomplete_results_are_not_accepted_and_codex_tools_are_rejected(self):
+        self.assertFalse(
+            CLIRuntime._parse(
+                "openai",
+                b'{"type":"item.completed","item":{"type":"agent_message","text":"partial"}}',
+            )["complete"]
+        )
+        self.assertFalse(
+            CLIRuntime._parse(
+                "gemini",
+                b'{"event":"result","result":{"status":"ERROR","response":"partial"}}',
+            )["complete"]
+        )
+        self.assertFalse(
+            CLIRuntime._parse(
+                "claude",
+                b'{"type":"result","subtype":"error_max_turns","result":"partial"}',
+            )["complete"]
+        )
+        with self.assertRaisesRegex(ValueError, "tool"):
+            CLIRuntime._parse(
+                "openai", b'{"type":"item.completed","item":{"type":"file_change"}}'
+            )
+        with self.assertRaisesRegex(ValueError, "tool"):
+            CLIRuntime._parse(
+                "gemini",
+                b'{"event":"step_update","step_update":{"step_type":"tool"}}',
+            )
+        with self.assertRaisesRegex(ValueError, "invalid event"):
+            CLIRuntime._parse("gemini", b'"not an event"')
+
+    def test_generation_rejects_bad_models_oversized_results_and_redacts_errors(self):
+        def run(args, *_rest):
+            text = {"type": "result", "subtype": "success", "result": "x" * 65537}
+            return subprocess.CompletedProcess(args, 0, json.dumps(text).encode(), b"")
+
+        runtime = CLIRuntime(runner=run)
+        with self.assertRaises(ValueError):
+            runtime.generate("claude", "-unsafe", "", "", 20)
+        with patch("orchestration.cli_models.shutil.which", return_value="/tool/bin"):
+            with self.assertRaisesRegex(ValueError, "64 KiB"):
+                runtime.generate("claude", "default", "", "", 20)
+        runtime.runner = lambda args, *_rest: subprocess.CompletedProcess(
+            args, 1, b"", b"PRIVATE authentication required"
+        )
+        with patch("orchestration.cli_models.shutil.which", return_value="/tool/bin"):
+            with self.assertRaisesRegex(ValueError, "Sign in") as raised:
+                runtime.generate("claude", "default", "", "", 20)
+        self.assertNotIn("PRIVATE", str(raised.exception))
+
+    def test_process_runner_handles_stdin_and_keeps_api_keys_out(self):
+        code = "import os,sys; data=sys.stdin.buffer.read(); print(len(data)); print('ANTHROPIC_API_KEY' in os.environ)"
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"ANTHROPIC_API_KEY": "PRIVATE"}
+        ):
+            result = CLIRuntime._run(
+                [sys.executable, "-c", code], b"x" * 180000, directory, 5, None
+            )
+        self.assertEqual(result.stdout.strip(), b"180000\nFalse")
+
+    def test_process_runner_cancels_and_enforces_timeout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cancelled = threading.Event()
+            cancelled.set()
+            with self.assertRaises(InterruptedError):
+                CLIRuntime._run(
+                    [sys.executable, "-c", "import time; time.sleep(30)"],
+                    b"",
+                    directory,
+                    5,
+                    cancelled,
+                )
+            started = time.monotonic()
+            with self.assertRaisesRegex(ValueError, "time limit"):
+                CLIRuntime._run(
+                    [sys.executable, "-c", "import time; time.sleep(30)"],
+                    b"",
+                    directory,
+                    0.1,
+                    None,
+                )
+            self.assertLess(time.monotonic() - started, 3)
+
+    def test_process_runner_limits_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "size limit"):
+                CLIRuntime._run(
+                    [sys.executable, "-c", "import sys; sys.stdout.write('x'*5000000)"],
+                    b"",
+                    directory,
+                    5,
+                    None,
+                )

@@ -1,4 +1,4 @@
-/** Editable role suggestions, not model-provider or runtime configuration. */
+/** Editable role suggestions with a local CLI preference for new assignments. */
 export const ROLES = {
   coordinator: {
     name: "Coordinator",
@@ -117,6 +117,7 @@ export function makeAgent(roleKey, key, parent = "") {
     reports_to: parent,
     max_concurrency: "1",
     provider: "",
+    execution_mode: "cli",
     model: "",
     collaborators: [],
   };
@@ -143,6 +144,7 @@ export function changeRole(agent, roleKey) {
         : agent.responsibilities,
     max_concurrency: agent.max_concurrency,
     provider: agent.provider,
+    execution_mode: agent.execution_mode || "api",
     model: agent.model,
     collaborators: [...(agent.collaborators || [])],
     capabilities: agent.provider

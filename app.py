@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import secrets
 import signal
+import threading
 from urllib.parse import urlparse
 
 from orchestration.engine import Engine
@@ -160,7 +161,7 @@ def make_handler(
             return {
                 **engine.snapshot(),
                 "features": {"local_tools": local_features},
-                "model_providers": engine.models.catalog(),
+                "model_providers": engine.model_catalog(local_tools=local_features),
             }
 
         def do_GET(self):
@@ -239,7 +240,10 @@ def make_handler(
                     except (ValueError, PermissionError, OSError) as exc:
                         self.send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
             elif route == "/api/models":
-                self.send(HTTPStatus.OK, {"providers": engine.models.catalog()})
+                self.send(
+                    HTTPStatus.OK,
+                    {"providers": engine.model_catalog(local_tools=local_features)},
+                )
             elif route == "/api/providers":
                 self.send(HTTPStatus.OK, {"providers": engine.providers.list()})
             elif route == "/api/state":
@@ -362,7 +366,10 @@ def make_handler(
                             "Local source files are unavailable in hosted mode"
                         )
                     goal_id = engine.submit(
-                        data.get("project_id"), data.get("title"), data.get("tasks")
+                        data.get("project_id"),
+                        data.get("title"),
+                        data.get("tasks"),
+                        allow_cli=local_features,
                     )
                     self.send(HTTPStatus.CREATED, {"id": goal_id})
                 elif route == "/api/cancel":
@@ -417,6 +424,7 @@ def main():
         args.data_dir,
         execution_limit=args.execution_limit,
         allow_source_access=args.mode == "local",
+        allow_cli=args.mode == "local",
     )
     token = secrets.token_urlsafe(32)
     token_path = args.data_dir / "api-token"
@@ -443,6 +451,10 @@ def main():
         engine.close()
         raise
     engine.start()
+    if engine.cli is not None:
+        threading.Thread(
+            target=engine.cli.refresh, name="cli-connections", daemon=True
+        ).start()
 
     def stop_server(_signal, _frame):
         """Route container termination through the same graceful cleanup as Ctrl-C."""
@@ -453,7 +465,7 @@ def main():
         f"Backend API: {origin or f'http://127.0.0.1:{server.server_port}'}", flush=True
     )
     print(
-        "Local and provider-backed text tasks; model calls require configured API credentials.",
+        "Model tasks use the assigned agent's saved CLI sign-in or configured API key.",
         flush=True,
     )
     try:

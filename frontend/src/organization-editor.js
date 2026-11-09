@@ -26,6 +26,7 @@ export function editableAgents(agents) {
       ? agent.responsibilities.join("\n")
       : agent.responsibilities,
     capabilities: [...agent.capabilities],
+    execution_mode: agent.execution_mode || "api",
     collaborators: [...(agent.collaborators || [])],
     reports_to: byId.get(agent.reports_to) || agent.reports_to || "",
     max_concurrency: String(agent.max_concurrency),
@@ -46,6 +47,7 @@ export function mountOrganizationEditor({
   modelProviders = [],
 }) {
   const document = root.ownerDocument;
+  const localTools = modelProviders.some((provider) => provider.cli);
   let agents = editableAgents(initial),
     concurrency = String(maxConcurrency),
     selected =
@@ -68,6 +70,8 @@ export function mountOrganizationEditor({
       ),
     ) + 1;
   const locked = new Set(lockedKeys);
+  if (!localTools)
+    agents = agents.map((agent) => ({ ...agent, execution_mode: "api" }));
 
   /** Publish an immutable draft snapshot without committing it to the backend. */
   function publish() {
@@ -172,13 +176,16 @@ export function mountOrganizationEditor({
   /** Show each agent's provider/model assignment and reciprocal peer links. */
   function modelAndPeers(agent) {
     const provider = modelProviders.find((item) => item.id === agent.provider);
+    const mode = agent.execution_mode || "api";
+    const connection = mode === "cli" ? provider?.cli : provider;
     const models = [
       ...new Set([
-        ...(provider?.models || []),
+        ...(mode === "cli" ? ["default"] : []),
+        ...(connection?.models || []),
         ...(agent.model ? [agent.model] : []),
       ]),
     ];
-    return `<label class="field"><span>Model provider</span><select data-agent-provider aria-label="Model provider"><option value="">No model assigned</option>${[
+    return `${localTools ? `<label class="field"><span>Run this agent with</span><select data-agent-execution-mode aria-label="Execution mode"><option value="cli" ${mode === "cli" ? "selected" : ""}>Local CLI · saved sign-in</option><option value="api" ${mode === "api" ? "selected" : ""}>API key</option></select></label>` : ""}<label class="field"><span>Model provider</span><select data-agent-provider aria-label="Model provider"><option value="">No model assigned</option>${[
       ["openai", "OpenAI"],
       ["claude", "Claude"],
       ["gemini", "Gemini"],
@@ -189,7 +196,7 @@ export function mountOrganizationEditor({
       )
       .join(
         "",
-      )}</select></label>${agent.provider ? `<label class="field"><span>Model</span><select data-agent-model aria-label="Model"><option value="">Choose a model</option>${models.map((model) => `<option value="${e(model)}" ${agent.model === model ? "selected" : ""}>${e(model)}</option>`).join("")}</select><small>${provider?.configured ? "Models loaded from the provider's API." : "Connect this provider in Model connections, then reopen the team editor."}</small></label>` : ""}<fieldset class="collaborator-picker"><legend>Works with</legend>${agents
+      )}</select></label>${agent.provider ? `<label class="field"><span>Model</span><select data-agent-model aria-label="Model"><option value="">Choose a model</option>${models.map((model) => `<option value="${e(model)}" ${agent.model === model ? "selected" : ""}>${model === "default" ? "CLI default model" : e(model)}</option>`).join("")}</select><small>${connection?.configured ? mode === "cli" ? "Uses this CLI's saved sign-in and selected model." : "Models loaded from the provider's API." : "Connect this provider in Model connections, then reopen the team editor."}</small></label>` : ""}<fieldset class="collaborator-picker"><legend>Works with</legend>${agents
       .filter((peer) => peer.key !== agent.key)
       .map(
         (peer) =>
@@ -261,6 +268,7 @@ export function mountOrganizationEditor({
       key = `agent-${nextId++}`;
     } while (agents.some((agent) => agent.key === key));
     const agent = makeAgent(role, key, current()?.key || "");
+    if (!localTools) agent.execution_mode = "api";
     const duplicateCount = agents.filter(
       (other) => other.role_template === role,
     ).length;
@@ -366,9 +374,18 @@ export function mountOrganizationEditor({
       }
       const agent = current();
       if (!agent) return;
+      if (event.target.matches("[data-agent-execution-mode]")) {
+        agent.execution_mode = event.target.value;
+        agent.model =
+          agent.provider && agent.execution_mode === "cli" ? "default" : "";
+        publish();
+        render();
+        return;
+      }
       if (event.target.matches("[data-agent-provider]")) {
         agent.provider = event.target.value;
-        agent.model = "";
+        agent.model =
+          agent.provider && agent.execution_mode === "cli" ? "default" : "";
         agent.capabilities = agent.capabilities.filter(
           (cap) => cap !== "model.generate",
         );

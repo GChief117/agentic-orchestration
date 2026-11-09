@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
-import { openProviderForm } from "../src/provider-form.js";
+import { openProviderForm, mountProviderPanel } from "../src/provider-form.js";
+import { mountDialog } from "../src/form-controls.js";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -85,6 +86,42 @@ test("provider errors remain visible and allow retry", async () => {
       false,
     );
     dialog.close();
+  } finally {
+    dom.window.close();
+  }
+});
+
+test("native sign-in confirmation updates automatically and polling stops on close", async () => {
+  const dom = new JSDOM("<!doctype html><body></body>");
+  try {
+    let calls = 0;
+    let changes = 0;
+    const controller = mountDialog(dom.window.document, "Connections", "Test");
+    const content = controller.dialog.querySelector("[data-content]");
+    await mountProviderPanel(content, controller, {
+      async providers() {
+        calls += 1;
+        return { providers: [{
+          id: "gemini", name: "Gemini", tool: "Antigravity CLI",
+          installed: true, can_launch: true, command: "agy",
+          docs: "https://antigravity.google/", models: ["default"],
+          state: calls === 1 ? "signed_out" : "signed_in",
+        }] };
+      },
+    }, async () => { changes += 1; }, 10);
+    assert.equal(content.querySelector("[data-provider]").textContent, "Open Antigravity");
+    const deadline = Date.now() + 500;
+    while (calls < 2 && Date.now() < deadline)
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    await tick();
+    assert.equal(content.querySelector("[data-provider]").textContent, "Switch account");
+    assert.match(content.querySelector("[data-provider-message]").textContent, /sign-in confirmed/);
+    assert.equal(changes, 2);
+    controller.dialog.close();
+    await tick();
+    const stoppedCalls = calls;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(calls, stoppedCalls);
   } finally {
     dom.window.close();
   }

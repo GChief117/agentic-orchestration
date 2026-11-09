@@ -1,6 +1,6 @@
 # Backend implementation
 
-The repository includes a small working backend foundation. A separate JavaScript frontend is served by the local application. It initializes greenfield projects with explicit charters and agent teams, runs assigned task graphs, persists their state, and performs bounded local file and terminal operations. It also runs explicit text-generation tasks through configured model provider APIs. Remote bridges and interactive tool-using agent sessions are not implemented.
+The repository includes a small working backend foundation. A separate JavaScript frontend is served by the local application. It initializes greenfield projects with explicit charters and agent teams, runs assigned task graphs, persists their state, and performs bounded local file and terminal operations. It runs explicit text-generation tasks through saved local CLI sign-ins or configured model provider APIs. Remote bridges and interactive tool-using agent sessions are not implemented.
 
 ## Code responsibilities
 
@@ -12,6 +12,8 @@ The repository includes a small working backend foundation. A separate JavaScrip
 | `orchestration/scheduling.py` | Pure functions for dependency readiness, fair dispatch among goals, resource conflicts, and goal state. | Task records only |
 | `orchestration/engine.py` | Coordinate submission, scheduling, worker lifecycle, cancellation, and persistence. | Plans, store, scheduler, executor |
 | `orchestration/execution.py` | Perform local operations and return acceptance evidence and effect status. | Connection policy |
+| `orchestration/cli_models.py` | Discover saved CLI sessions and run bounded, isolated text tasks through Codex, Claude Code, and Antigravity. | Locally installed provider CLIs |
+| `orchestration/models.py` | List API models and run bounded provider text requests without persisting credentials. | HTTPS |
 | `orchestration/connections.py` | Identify the local target, check supported capabilities, and constrain artifact paths. | Filesystem |
 | `app.py` | Authenticated, loopback-only JSON API. | Engine |
 | `orchestration/__main__.py` | Run a plan from the command line and print its result. | Engine |
@@ -33,6 +35,7 @@ Scheduler policy is testable without a database or thread. Adapter execution is 
 - `files.write`: atomically replace a bounded text artifact and verify the resulting bytes.
 - `files.inspect`: inspect bounded artifact content, compute a digest, and optionally compare expected text.
 - `terminal.python_version`: execute the current Python interpreter's version command using a fixed argument vector.
+- `model.generate`: call the assigned agent's CLI or API runtime with its project context and completed handoffs, then save a bounded text artifact.
 
 Task graphs can contain any combination of these operations. These are foundation capabilities, not a claim of complete bridge parity. There is no unrestricted shell or remote target fallback.
 

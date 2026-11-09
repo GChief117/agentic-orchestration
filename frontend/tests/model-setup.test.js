@@ -5,6 +5,7 @@ import { mountOrganizationEditor } from "../src/organization-editor.js";
 import { guidedDraft, changeRole } from "../src/presets.js";
 import { openModelConnections } from "../src/model-connections.js";
 import { openGoalForm } from "../src/forms.js";
+import { projectPayload } from "../src/domain.js";
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 /** Dispatch native change events on a selected value without a real browser. */
@@ -41,6 +42,36 @@ test("agents keep model assignments and reciprocal collaboration links", () => {
     const writer = changeRole(team[1], "writer");
     assert.equal(writer.model, "test-model");
     assert.deepEqual(writer.collaborators, ["agent-3"]);
+    editor.destroy();
+  } finally {
+    dom.window.close();
+  }
+});
+
+test("local agents use native CLI models and preserve execution mode in saved rosters", () => {
+  const dom = new JSDOM('<div id="editor"></div>');
+  try {
+    const root = dom.window.document.querySelector("#editor");
+    const draft = guidedDraft();
+    const editor = mountOrganizationEditor({
+      root, agents: draft.agents, maxConcurrency: 2,
+      modelProviders: [{
+        id: "gemini", configured: true, models: ["api-model"],
+        cli: { configured: true, state: "signed_in", models: ["default", "native-model"] },
+      }],
+    });
+    assert.equal(root.querySelector("[data-agent-execution-mode]").value, "cli");
+    change(dom, root.querySelector("[data-agent-provider]"), "gemini");
+    assert.equal(root.querySelector("[data-agent-model]").value, "default");
+    change(dom, root.querySelector("[data-agent-model]"), "native-model");
+    const team = editor.snapshot();
+    const payload = projectPayload({ ...draft, ...team, name: "CLI team", objective: "Run tasks" });
+    assert.equal(payload.agents[0].execution_mode, "cli");
+    assert.equal(payload.agents[0].model, "native-model");
+    change(dom, root.querySelector("[data-agent-execution-mode]"), "api");
+    assert.equal(root.querySelector("[data-agent-model]").value, "");
+    assert.ok(root.querySelector('[data-agent-model] option[value="api-model"]'));
+    assert.equal(editor.snapshot().agents[0].execution_mode, "api");
     editor.destroy();
   } finally {
     dom.window.close();
@@ -162,6 +193,8 @@ test("model task form submits prompt, output path, and token budget", async () =
         payload = result;
       },
     );
+    assert.match(dialog.textContent, /Requested output tokens/);
+    assert.match(dialog.textContent, /not a billing cap/);
     for (const [field, value] of Object.entries({
       "goal-title": "Create a plan",
       title: "Plan",

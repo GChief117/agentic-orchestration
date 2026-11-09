@@ -125,6 +125,7 @@ export function projectPayload(draft) {
     capabilities: [...agent.capabilities],
     reports_to: agent.reports_to || null,
     provider: agent.provider || null,
+    execution_mode: agent.execution_mode || "api",
     model: agent.model || null,
     collaborators: [...(agent.collaborators || [])],
     max_concurrency: positive(

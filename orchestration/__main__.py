@@ -40,6 +40,12 @@ def main():
         project_id = args.project_id
         if args.project:
             project_id = engine.create_project(json.loads(args.project.read_text()))
+        for provider in {
+            agent["provider"]
+            for agent in engine.store.agents(project_id)
+            if agent.get("execution_mode") == "cli" and agent.get("provider")
+        }:
+            engine.cli.refresh(provider)
         goal_id = engine.submit(project_id, plan.get("title"), plan.get("tasks"))
         engine.start()
         deadline = time.monotonic() + args.timeout

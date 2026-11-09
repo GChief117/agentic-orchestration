@@ -12,6 +12,7 @@ from .projects import parse_project, positive_integer
 from .storage import Store
 from .providers import ProviderConnections
 from .models import ModelRuntime
+from .cli_models import CLIRuntime
 from .sources import list_source_files
 from .discovery import ProjectDiscovery, imported_definition
 
@@ -24,7 +25,8 @@ class Engine:
         execution_limit,
         target_limits=None,
         executor=None,
-        allow_source_access=True
+        allow_source_access=True,
+        allow_cli=True,
     ):
         """Build the local runtime with explicitly supplied global execution capacity.
 
@@ -47,11 +49,15 @@ class Engine:
         self.connection = LocalConnection(Path(directory) / "artifacts")
         self.allow_source_access = allow_source_access
         self.models = ModelRuntime()
+        self.cli = CLIRuntime() if allow_cli else None
         self.executor = executor or LocalExecutor(
-            self.connection, self.models, allow_source_access=allow_source_access
+            self.connection,
+            self.models,
+            cli_models=self.cli,
+            allow_source_access=allow_source_access,
         )
         self.store = Store(directory)
-        self.providers = ProviderConnections(directory)
+        self.providers = ProviderConnections(directory, runtime=self.cli)
         self.discovery = ProjectDiscovery()
         self.lock = threading.RLock()
         self.stopping = threading.Event()
@@ -76,6 +82,14 @@ class Engine:
             with self.store.db:
                 project_id = self.store.create_project(definition)
         return project_id
+
+    def model_catalog(self, *, local_tools=True):
+        """Combine API models with cached local CLI readiness without launching tools."""
+        providers = self.models.catalog()
+        if local_tools and self.cli is not None:
+            local = {item["id"]: item for item in self.cli.catalog()}
+            return [{**item, "cli": local.get(item["id"])} for item in providers]
+        return providers
 
     def scan_projects(self, root, include_root=False):
         """Discover folders read-only and mark paths already registered in this workspace."""
@@ -168,7 +182,7 @@ class Engine:
                 self.store.update_team(project_id, definition)
         return project_id
 
-    def submit(self, project_id, title, tasks):
+    def submit(self, project_id, title, tasks, *, allow_cli=True):
         """Validate and atomically queue a goal in an existing project.
 
         project_id identifies the team; tasks name its agent keys and dependencies.
@@ -193,12 +207,20 @@ class Engine:
             )
             by_id = {agent["id"]: agent for agent in team}
             for task in definitions:
-                if task.capability == "model.generate" and not self.models.ready(
-                    by_id[task.agent_id]["provider"]
-                ):
-                    raise ValueError(
-                        "Connect the assigned model provider before submitting this goal"
-                    )
+                if task.capability == "model.generate":
+                    agent = by_id[task.agent_id]
+                    if agent.get("execution_mode", "api") == "cli":
+                        if self.cli is None or not allow_cli:
+                            raise PermissionError(
+                                "Local CLI execution is unavailable in hosted mode"
+                            )
+                        runtime = self.cli
+                    else:
+                        runtime = self.models
+                    if not runtime.ready(agent["provider"]):
+                        raise ValueError(
+                            "Connect the assigned model provider before submitting this goal"
+                        )
             with self.store.db:
                 goal_id = self.store.create_goal(
                     project_id, title.strip(), definitions, "local-workspace"

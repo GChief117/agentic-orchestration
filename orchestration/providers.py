@@ -40,17 +40,31 @@ PROVIDERS = {
 class ProviderConnections:
     """Discover official tools and launch explicit, user-driven sign-in sessions."""
 
-    def __init__(self, directory):
+    def __init__(self, directory, runtime=None):
         """Keep generated launchers under the private runtime, outside project files."""
         self.directory = Path(directory) / "provider-signin"
+        self.runtime = runtime
 
     def list(self):
         """Return safe status metadata without reading or returning credential files."""
+        if self.runtime is not None:
+            self.runtime.refresh()
         return [self.status(key) for key in PROVIDERS]
 
     def status(self, key):
         """Ask supported CLIs about login; tool availability alone is not authentication."""
         provider = self._provider(key)
+        if self.runtime is not None:
+            status = self.runtime.status(key)
+            installed = status["state"] != "not_installed"
+            return {
+                **status,
+                "tool": provider["tool"],
+                "installed": installed,
+                "can_launch": installed and platform.system() == "Darwin",
+                "command": shlex.join([provider["binary"], *provider["login"]]),
+                "docs": provider["docs"],
+            }
         binary = shutil.which(provider["binary"])
         state = "not_installed" if not binary else "unverified"
         if binary and provider["check"]:
@@ -125,7 +139,7 @@ class ProviderConnections:
             ) from exc
         return {
             "state": "launched",
-            "message": "Finish sign-in in Terminal, then refresh status.",
+            "message": "Finish sign-in in Terminal. This screen will update when it is confirmed.",
         }
 
     @staticmethod

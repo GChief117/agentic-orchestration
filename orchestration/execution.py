@@ -15,10 +15,13 @@ class ExecutionCancelled(Exception):
 
 
 class LocalExecutor:
-    def __init__(self, connection, models=None, *, allow_source_access=True):
+    def __init__(
+        self, connection, models=None, *, cli_models=None, allow_source_access=True
+    ):
         """Attach the local target policy used to authorize and scope operations."""
         self.connection = connection
         self.models = models
+        self.cli_models = cli_models
         self.allow_source_access = allow_source_access
 
     def execute(self, task, cancelled):
@@ -79,7 +82,7 @@ class LocalExecutor:
                 "effect": "none",
             }
         elif capability == "model.generate":
-            if self.models is None:
+            if self.models is None and self.cli_models is None:
                 raise ValueError("Model execution is not configured")
             context = task["context"]
             agent = context["agent"]
@@ -146,9 +149,31 @@ class LocalExecutor:
                     - len(handoffs),
                 }
             )
-            generated = self.models.generate(
-                agent["provider"], agent["model"], system, prompt, params["max_tokens"]
-            )
+            execution_mode = agent.get("execution_mode", "api")
+            if execution_mode == "cli":
+                if self.cli_models is None:
+                    raise PermissionError("Local CLI execution is unavailable")
+                try:
+                    generated = self.cli_models.generate(
+                        agent["provider"],
+                        agent["model"],
+                        system,
+                        prompt,
+                        params["max_tokens"],
+                        cancelled=cancelled,
+                    )
+                except InterruptedError:
+                    raise ExecutionCancelled("Local CLI task was cancelled") from None
+            else:
+                if self.models is None:
+                    raise ValueError("API model execution is not configured")
+                generated = self.models.generate(
+                    agent["provider"],
+                    agent["model"],
+                    system,
+                    prompt,
+                    params["max_tokens"],
+                )
             if cancelled.is_set():
                 raise ExecutionCancelled(
                     "Cancelled after provider response; the request may still be billed"
@@ -166,12 +191,14 @@ class LocalExecutor:
             result.update(
                 provider=agent["provider"],
                 model=agent["model"],
+                execution_mode=execution_mode,
                 source_files=[
                     {"path": item["path"], "sha256": item["sha256"]}
                     for item in source_files
                 ],
                 usage=generated["usage"],
                 response_id=generated["response_id"],
+                token_limit_enforced=generated.get("token_limit_enforced", True),
                 accepted=generated["complete"],
                 check="Provider completed a text response; content requires review"
                 if generated["complete"]

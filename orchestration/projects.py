@@ -41,6 +41,7 @@ class AgentDefinition:
     provider: str | None
     model: str | None
     collaborators: list[str]
+    execution_mode: str
 
 
 @dataclass(frozen=True)
@@ -108,6 +109,9 @@ def parse_project(document, connection):
             model = model_name(model)
         if model is not None and provider is None:
             raise ValueError("A model requires a provider")
+        execution_mode = item.get("execution_mode", "api")
+        if execution_mode not in ("api", "cli"):
+            raise ValueError("Choose local CLI or API execution")
         collaborators = text_list(item.get("collaborators", []), "Collaborators")
         if len(set(collaborators)) != len(collaborators) or key in collaborators:
             raise ValueError("Collaborators must be distinct other agents")
@@ -128,6 +132,7 @@ def parse_project(document, connection):
                 provider,
                 model,
                 collaborators,
+                execution_mode,
             )
         )
     by_key = {agent.key: agent for agent in agents}

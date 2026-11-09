@@ -43,7 +43,7 @@ export function openModelConnections(
     }
     const root = document.createElement("div");
     panel.replaceChildren(root);
-    if (mode === "cli") return mountProviderPanel(root, controller, api);
+    if (mode === "cli") return mountProviderPanel(root, controller, api, onChange);
     return mountApiPanel(root, controller, api, onChange);
   }
 
@@ -84,7 +84,7 @@ export function openModelConnections(
 
 /** Connect provider APIs without saving credentials in browser storage. */
 function mountApiPanel(content, controller, api, onChange) {
-  content.innerHTML = `<div class="dialog-body"><p>Connect an API key for the providers your agents will use. Model tasks use the provider and model assigned to each agent.</p><div class="notice">API usage can incur provider charges. Keys entered here stay in server memory until restart; they are not saved in project files, browser storage, or GitHub. CLI subscription sign-in is separate from API access.</div><div data-model-providers>Loading connections…</div><div class="notice danger hidden" data-error role="alert"></div></div>`;
+  content.innerHTML = `<div class="dialog-body"><p>Connect an API key for agents assigned to API execution. Local CLI agents use the saved sign-in from the first tab.</p><div class="notice">API usage can incur provider charges. Keys entered here stay in server memory until restart; they are not saved in project files, browser storage, or GitHub.</div><div data-model-providers>Loading connections…</div><div class="notice danger hidden" data-error role="alert"></div></div>`;
 
   /** Render readiness and an empty password field for each provider. */
   function render(providers) {
