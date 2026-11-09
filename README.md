@@ -20,6 +20,22 @@ Sample projects shown in the **Warm minimal** theme.
 
 ![Editable organization chart with a selected agent's local CLI, Gemini model, and collaboration settings](docs/images/agent-organization.png)
 
+### Color themes
+
+The same sample workspace in the other six palettes. **Warm minimal** is shown above. Choose a preview to view it at full size; colors and typography can be selected independently in **Appearance**.
+
+| Original green | Crisp neutral |
+| --- | --- |
+| [![Workspace in the Original green palette](docs/images/theme-original.png)](docs/images/theme-original.png) | [![Workspace in the Crisp neutral palette](docs/images/theme-neutral.png)](docs/images/theme-neutral.png) |
+
+| Dark graphite | Neon blue |
+| --- | --- |
+| [![Workspace in the Dark graphite palette](docs/images/theme-graphite.png)](docs/images/theme-graphite.png) | [![Workspace in the Neon blue palette](docs/images/theme-neon.png)](docs/images/theme-neon.png) |
+
+| Ocean & clay | Plum & honey |
+| --- | --- |
+| [![Workspace in the Ocean and clay palette](docs/images/theme-ocean.png)](docs/images/theme-ocean.png) | [![Workspace in the Plum and honey palette](docs/images/theme-plum.png)](docs/images/theme-plum.png) |
+
 ## Run the backend
 
 Python 3.10+ on macOS or Linux; no third-party runtime dependencies.
