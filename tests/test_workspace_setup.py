@@ -104,6 +104,10 @@ class WorkspaceSetupTests(unittest.TestCase):
             {"input_hashes": {"../outside": "a" * 64}},
             {"input_hashes": {}},
             {"aws_account_id": "wrong"},
+            {"aws_account_id": None},
+            {"aws_profile": None},
+            {"aws_account_id": None, "aws_profile": "invalid profile"},
+            {"aws_account_id": "", "aws_profile": None},
             {"env": {"AWS_SECRET_ACCESS_KEY": "private"}},
             {"env": {"UV_INDEX_URL": "https://user:private@example.test"}},
             {"env": {"BASH_ENV": "/tmp/script"}},
@@ -139,10 +143,92 @@ class WorkspaceSetupTests(unittest.TestCase):
         )
         self.assertEqual(len(result["sample.install"]["input_hashes"]), 168)
 
-    def test_success_verification_and_duplicate_identity_do_not_replay(self):
-        with self.isolated():
+    def test_configuration_accepts_explicitly_local_steps(self):
+        step = {**self.step, "aws_account_id": None, "aws_profile": None}
+        result = validate_setup_steps(
+            {"repositories": ["sample"], "setup_steps": {"sample.local": step}}
+        )
+        self.assertIsNone(result["sample.local"]["aws_account_id"])
+        self.assertIsNone(result["sample.local"]["aws_profile"])
+
+    def test_local_environment_removes_inherited_aws_values_without_none(self):
+        step = {**self.step, "aws_account_id": None, "aws_profile": None}
+        with patch.dict(
+            os.environ,
+            {
+                "AWS_PROFILE": "inherited",
+                "AWS_CONFIG_FILE": "/inherited/config",
+                "AWS_ACCESS_KEY_ID": "private",
+                "AWS_SESSION_TOKEN": "private",
+            },
+        ):
+            environment = self.remote["setup_environment"](step)
+        for key in (
+            "AWS_PROFILE",
+            "AWS_CONFIG_FILE",
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SESSION_TOKEN",
+        ):
+            self.assertNotIn(key, environment)
+        self.assertTrue(all(isinstance(value, str) for value in environment.values()))
+        step["env"] = {"AWS_PROFILE": "operator-reviewed"}
+        self.assertEqual(
+            self.remote["setup_environment"](step)["AWS_PROFILE"], "operator-reviewed"
+        )
+
+    def test_local_steps_skip_aws_guard_and_reuse_their_false_receipt(self):
+        self.step.update(aws_account_id=None, aws_profile=None)
+        guard = unittest.mock.Mock(side_effect=AssertionError("AWS guard was called"))
+        with (
+            self.isolated(aws=False),
+            patch.dict(self.remote, {"setup_verify_aws": guard}),
+        ):
             first = self.remote["workspace_setup"](self.payload)
             second = self.remote["workspace_setup"](self.payload)
+        guard.assert_not_called()
+        self.assertFalse(first["aws_account_verified"])
+        self.assertFalse(second["aws_account_verified"])
+        self.assertTrue(second["already_completed"])
+        self.assertEqual((self.repository / "result.txt").read_text(), "x")
+
+    def test_cached_receipt_guard_result_must_match_the_reviewed_step(self):
+        for local in (True, False):
+            with self.subTest(local=local):
+                self.step.update(
+                    aws_account_id=None if local else "551127968046",
+                    aws_profile=None if local else "default",
+                )
+                self.payload["operation_id"] = "guard-result-" + str(local)
+                self.step["argv"] = [
+                    sys.executable,
+                    "-c",
+                    "from pathlib import Path; Path('result.txt').write_text('x')",
+                ]
+                with self.isolated():
+                    self.remote["workspace_setup"](self.payload)
+                    record_path = next(
+                        path
+                        for path in self.home.rglob("*.json")
+                        if json.loads(path.read_text()).get("operation_id")
+                        == self.payload["operation_id"]
+                    )
+                    ledger = json.loads(record_path.read_text())
+                    ledger["result"]["aws_account_verified"] = local
+                    record_path.write_text(json.dumps(ledger))
+                    with self.assertRaisesRegex(ValueError, "receipt is invalid"):
+                        self.remote["workspace_setup"](self.payload)
+
+    def test_success_verification_and_duplicate_identity_do_not_replay(self):
+        guard = unittest.mock.Mock()
+        with (
+            self.isolated(aws=False),
+            patch.dict(self.remote, {"setup_verify_aws": guard}),
+        ):
+            first = self.remote["workspace_setup"](self.payload)
+            second = self.remote["workspace_setup"](self.payload)
+        guard.assert_called_once()
+        self.assertTrue(first["aws_account_verified"])
+        self.assertTrue(second["aws_account_verified"])
         self.assertTrue(first["verified"])
         self.assertTrue(second["already_completed"])
         self.assertEqual((self.repository / "result.txt").read_text(), "x")
@@ -183,8 +269,9 @@ class WorkspaceSetupTests(unittest.TestCase):
                 )
             return original(args, **kwargs)
 
-        with self.isolated(aws=False), patch.object(
-            subprocess, "run", side_effect=runner
+        with (
+            self.isolated(aws=False),
+            patch.object(subprocess, "run", side_effect=runner),
         ):
             with self.assertRaisesRegex(ValueError, "configured work account"):
                 self.remote["workspace_setup"](self.payload)
@@ -207,9 +294,15 @@ class WorkspaceSetupTests(unittest.TestCase):
                 "AWS_CONFIG_FILE": "/private/runtime.config",
             },
         }
-        with patch.object(subprocess, "run", side_effect=runner), patch.dict(
-            os.environ,
-            {"AWS_CONFIG_FILE": "/inherited/config", "AWS_SESSION_TOKEN": "private"},
+        with (
+            patch.object(subprocess, "run", side_effect=runner),
+            patch.dict(
+                os.environ,
+                {
+                    "AWS_CONFIG_FILE": "/inherited/config",
+                    "AWS_SESSION_TOKEN": "private",
+                },
+            ),
         ):
             environment = self.remote["setup_environment"](step)
             self.remote["setup_verify_aws"](step, environment)

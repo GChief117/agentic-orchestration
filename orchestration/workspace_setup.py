@@ -56,6 +56,18 @@ def validate_setup_parameters(parameters):
     return {"step": parameters["step"]}
 
 
+def _setup_aws_guard(account_id, profile):
+    """Require a complete AWS guard or explicit nulls for a local-only step."""
+    if account_id is None and profile is None:
+        return True
+    return (
+        isinstance(account_id, str)
+        and re.fullmatch(r"[0-9]{12}", account_id) is not None
+        and isinstance(profile, str)
+        and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", profile) is not None
+    )
+
+
 def validate_setup_steps(entry):
     """Validate private command definitions; return normalized independent copies."""
     steps = entry.get("setup_steps", {})
@@ -108,11 +120,8 @@ def validate_setup_steps(entry):
             or not _setup_argv(specification["verify_argv"])
             or type(specification["timeout_seconds"]) is not int
             or not 1 <= specification["timeout_seconds"] <= 1800
-            or not isinstance(specification["aws_account_id"], str)
-            or not re.fullmatch(r"[0-9]{12}", specification["aws_account_id"])
-            or not isinstance(specification["aws_profile"], str)
-            or not re.fullmatch(
-                r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", specification["aws_profile"]
+            or not _setup_aws_guard(
+                specification["aws_account_id"], specification["aws_profile"]
             )
         ):
             raise ValueError("Setup step has invalid reviewed configuration")
@@ -178,6 +187,7 @@ _VALIDATORS = "\n".join(
         _setup_relative,
         _setup_argv,
         validate_setup_parameters,
+        _setup_aws_guard,
         validate_setup_steps,
     )
 )
@@ -281,13 +291,15 @@ def setup_workspace_lock(directory):
         yield
 
 def setup_environment(specification):
-    """Use native AWS authentication while removing inherited credential overrides."""
+    """Remove inherited AWS overrides and apply only reviewed environment values."""
     forbidden = {"ENV", "BASH_ENV", "ZDOTDIR", "PYTHONSTARTUP", "PYTHONHOME", "LD_PRELOAD"}
     environment = {key: value for key, value in os.environ.items()
                    if not key.startswith("AWS_") and not key.startswith("DYLD_") and key not in forbidden}
     environment.update(specification.get("env", {}))
-    environment.update(AWS_PROFILE=specification.get("env", {}).get("AWS_PROFILE", specification["aws_profile"]), AWS_PAGER="",
-                       AWS_CLI_AUTO_PROMPT="off", AWS_EC2_METADATA_DISABLED="true")
+    profile = specification.get("env", {}).get("AWS_PROFILE", specification["aws_profile"])
+    if profile is not None:
+        environment["AWS_PROFILE"] = profile
+    environment.update(AWS_PAGER="", AWS_CLI_AUTO_PROMPT="off", AWS_EC2_METADATA_DISABLED="true")
     return environment
 
 def setup_verify_inputs(repository, hashes):
@@ -419,6 +431,7 @@ def workspace_setup(payload):
     name = parameters["step"]
     specification = validate_setup_steps({"repositories": payload.get("repositories", []),
                                           "setup_steps": {name: payload.get("setup_step")}})[name]
+    aws_guard_enabled = specification["aws_account_id"] is not None
     operation = payload.get("operation_id")
     if not isinstance(operation, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", operation):
         raise ValueError("Setup requires a stable operation identity")
@@ -437,11 +450,11 @@ def workspace_setup(payload):
                 stored = previous["result"]
                 duration = stored.get("duration_seconds")
                 if (stored.get("verified") is not True or stored.get("exit_code") != 0
-                        or stored.get("aws_account_verified") is not True
+                        or stored.get("aws_account_verified") is not aws_guard_enabled
                         or type(duration) not in (int, float) or not 0 <= duration <= 1900):
                     raise ValueError("Completed setup receipt is invalid; reconcile before retrying")
                 return {"step": name, "label": specification["label"], "repository": specification["repository"],
-                        "exit_code": 0, "verified": True, "aws_account_verified": True,
+                        "exit_code": 0, "verified": True, "aws_account_verified": aws_guard_enabled,
                         "duration_seconds": duration, "already_completed": True}
             raise ValueError("A previous setup attempt needs reconciliation before retrying")
         setup_require_reconciled_workspace(directory, path)
@@ -456,7 +469,8 @@ def workspace_setup(payload):
         try:
             setup_verify_inputs(repository, specification["input_hashes"])
             environment = setup_environment(specification)
-            setup_verify_aws(specification, environment)
+            if aws_guard_enabled:
+                setup_verify_aws(specification, environment)
             setup_verify_inputs(repository, specification["input_hashes"])
             deadline = time.monotonic() + specification["timeout_seconds"]
             setup_run_command(specification["argv"], repository, environment, deadline,
@@ -464,7 +478,7 @@ def workspace_setup(payload):
             setup_run_command(specification["verify_argv"], repository, environment, deadline,
                               interrupted, record, path, "verification")
             result = {"step": name, "label": specification["label"], "repository": specification["repository"],
-                      "exit_code": 0, "verified": True, "aws_account_verified": True,
+                      "exit_code": 0, "verified": True, "aws_account_verified": aws_guard_enabled,
                       "duration_seconds": round(time.time() - record["started"], 3)}
             record.update(state="complete", phase="complete", finished=time.time(), result=result)
             setup_write_record(path, record)
