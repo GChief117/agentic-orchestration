@@ -39,6 +39,7 @@ class LocalServer:
         self.process = subprocess.Popen(
             [
                 sys.executable,
+                "-S",
                 "-u",
                 str(ROOT / "app.py"),
                 "--port",

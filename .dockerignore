@@ -1,0 +1,19 @@
+# Only the runtime source is allowed into the build context.
+*
+!app.py
+!orchestration/
+!orchestration/**
+!frontend/
+!frontend/index.html
+!frontend/styles.css
+!frontend/favicon.svg
+!frontend/src/
+!frontend/src/**
+!frontend/styles/
+!frontend/styles/**
+**/__pycache__
+**/*.pyc
+**/node_modules
+**/.env
+**/.env.*
+**/.runtime

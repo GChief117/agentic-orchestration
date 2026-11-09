@@ -60,7 +60,7 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
       brandStyle: document.documentElement.dataset.brandStyle,
     });
     document.getElementById("connection-status").textContent =
-      "Local · connected";
+      `${snapshot.features?.local_tools === false ? "Hosted" : "Local"} · connected`;
     document.getElementById("last-updated").textContent =
       `Updated ${new Date().toLocaleTimeString()}`;
     if (focusKey)

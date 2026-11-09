@@ -2,6 +2,8 @@
 """Serve the backend JSON API: python3 app.py."""
 
 import argparse
+import base64
+import binascii
 from html import escape
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -9,9 +11,11 @@ import json
 import os
 from pathlib import Path
 import secrets
+import signal
 from urllib.parse import urlparse
 
 from orchestration.engine import Engine
+from orchestration.server_config import validate_hosting
 
 ROOT = Path(__file__).resolve().parent
 MAX_REQUEST_BYTES = 262144
@@ -65,7 +69,9 @@ STATIC_ASSETS = {
 }
 
 
-def make_handler(engine, token):
+def make_handler(
+    engine, token, *, public_origin=None, access_password=None, local_features=True
+):
     """Create an HTTP handler bound to one engine and its private session token.
 
     The returned class serves the local frontend and authenticated JSON API.
@@ -80,9 +86,11 @@ def make_handler(engine, token):
         @property
         def origin(self):
             """Return the canonical loopback origin for this running HTTP server."""
-            return f"http://127.0.0.1:{self.server.server_port}"
+            return public_origin or f"http://127.0.0.1:{self.server.server_port}"
 
-        def send(self, status, value, content_type="application/json"):
+        def send(
+            self, status, value, content_type="application/json", extra_headers=None
+        ):
             """Write a JSON or byte response with privacy and content-security headers.
 
             status is an HTTP code; content_type selects JSON encoding or raw bytes.
@@ -103,6 +111,8 @@ def make_handler(engine, token):
                 "default-src 'self'; script-src 'self'; style-src 'self'; "
                 "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
             )
+            for name, value in (extra_headers or {}).items():
+                self.send_header(name, value)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             try:
@@ -121,19 +131,54 @@ def make_handler(engine, token):
                 self.trusted_host()
                 and (not origin or origin == self.origin)
                 and secrets.compare_digest(
-                    self.headers.get("Authorization", ""), "Bearer " + token
+                    self.headers.get("Authorization", "").encode(),
+                    ("Bearer " + token).encode(),
                 )
             )
+
+        def workspace_access(self):
+            """Gate hosted HTML/assets with Basic auth; API requests use the issued bearer token."""
+            if access_password is None:
+                return True
+            header = self.headers.get("Authorization", "")
+            if secrets.compare_digest(header.encode(), ("Bearer " + token).encode()):
+                return True
+            if not header.startswith("Basic "):
+                return False
+            try:
+                credential = base64.b64decode(header[6:], validate=True).decode("utf-8")
+                username, password = credential.split(":", 1)
+            except (ValueError, UnicodeError, binascii.Error):
+                return False
+            return username == "workspace" and secrets.compare_digest(
+                password.encode(), access_password.encode()
+            )
+
+        def snapshot(self):
+            """Describe server features without exposing paths or checking local tools in hosted mode."""
+            return {**engine.snapshot(), "features": {"local_tools": local_features}}
 
         def do_GET(self):
             """Route frontend assets and reads; require authorization for API records.
 
             Only the local HTML shell receives the session bootstrap credential.
             """
+            if urlparse(self.path).path == "/healthz":
+                self.send(HTTPStatus.OK, {"status": "ok"})
+                return
             if not self.trusted_host():
                 self.send(HTTPStatus.FORBIDDEN, {"error": "Invalid host"})
                 return
 
+            if not self.workspace_access():
+                self.send(
+                    HTTPStatus.UNAUTHORIZED,
+                    {"error": "Workspace sign-in required"},
+                    extra_headers={
+                        "WWW-Authenticate": 'Basic realm="Orchestration", charset="UTF-8"'
+                    },
+                )
+                return
             route = urlparse(self.path).path
             if route == "/":
                 origin = self.headers.get("Origin")
@@ -160,12 +205,20 @@ def make_handler(engine, token):
                     HTTPStatus.OK,
                     {"projects": state["projects"], "agents": state["agents"]},
                 )
+            elif not local_features and route in (
+                "/api/projects/scan-roots",
+                "/api/providers",
+            ):
+                self.send(
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": "Local computer tools are unavailable in hosted mode"},
+                )
             elif route == "/api/projects/scan-roots":
                 self.send(HTTPStatus.OK, {"roots": engine.discovery.roots()})
             elif route == "/api/providers":
                 self.send(HTTPStatus.OK, {"providers": engine.providers.list()})
             elif route == "/api/state":
-                self.send(HTTPStatus.OK, engine.snapshot())
+                self.send(HTTPStatus.OK, self.snapshot())
             elif route.startswith("/api/artifact/"):
                 self.serve_artifact(route.removeprefix("/api/artifact/"))
             else:
@@ -218,6 +271,14 @@ def make_handler(engine, token):
             try:
                 data = self.read_body()
                 route = urlparse(self.path).path
+                if not local_features and route in (
+                    "/api/projects/scan",
+                    "/api/projects/import",
+                    "/api/providers/sign-in",
+                ):
+                    raise ValueError(
+                        "Local computer tools are unavailable in hosted mode"
+                    )
                 if route == "/api/projects/scan":
                     self.send(
                         HTTPStatus.OK,
@@ -272,10 +333,34 @@ def main():
     The engine and HTTP socket are closed when the process stops.
     """
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument("--data-dir", type=Path, default=ROOT / ".runtime")
-    parser.add_argument("--execution-limit", type=int, required=True)
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8765")))
+    parser.add_argument(
+        "--mode",
+        choices=("local", "hosted"),
+        default=os.environ.get("APP_MODE", "local"),
+    )
+    parser.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path(os.environ.get("DATA_DIR", ROOT / ".runtime")),
+    )
+    parser.add_argument(
+        "--execution-limit",
+        type=int,
+        default=os.environ.get("EXECUTION_LIMIT"),
+        required=not bool(os.environ.get("EXECUTION_LIMIT")),
+    )
     args = parser.parse_args()
+    try:
+        origin = validate_hosting(
+            args.mode,
+            args.host,
+            os.environ.get("PUBLIC_ORIGIN"),
+            os.environ.get("ACCESS_PASSWORD"),
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
     engine = Engine(args.data_dir, execution_limit=args.execution_limit)
     token = secrets.token_urlsafe(32)
     token_path = args.data_dir / "api-token"
@@ -287,15 +372,32 @@ def main():
             output.write(token)
 
         server = ThreadingHTTPServer(
-            ("127.0.0.1", args.port), make_handler(engine, token)
+            (args.host, args.port),
+            make_handler(
+                engine,
+                token,
+                public_origin=origin,
+                access_password=os.environ.get("ACCESS_PASSWORD")
+                if args.mode == "hosted"
+                else None,
+                local_features=args.mode == "local",
+            ),
         )
     except Exception:
         engine.close()
         raise
     engine.start()
-    print(f"Backend API: http://127.0.0.1:{server.server_port}", flush=True)
+
+    def stop_server(_signal, _frame):
+        """Route container termination through the same graceful cleanup as Ctrl-C."""
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, stop_server)
     print(
-        "Local deterministic tasks only; no AI provider or remote bridge connected.",
+        f"Backend API: {origin or f'http://127.0.0.1:{server.server_port}'}", flush=True
+    )
+    print(
+        "Deterministic tasks only; model execution and remote bridges are not connected.",
         flush=True,
     )
     try:

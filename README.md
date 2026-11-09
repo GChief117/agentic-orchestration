@@ -19,6 +19,15 @@ python3 app.py --port 8765 --execution-limit 4
 
 The first command runs an explicit task graph and prints its result. The second starts the JavaScript project workspace and its authenticated JSON API at `http://127.0.0.1:8765`. The backend initializes projects with charters and assigned agent teams, and persists goals, tasks, attempts, and receipts, enforces dependencies and resource conflicts, and executes bounded local operations. Remote bridges and model execution adapters are not connected yet. The Model connections dialog can launch sign-in through installed official provider tools; those accounts are not yet used to execute tasks. See the [backend implementation](docs/backend.md) for the module map, request flow, API, and limitations.
 
+## Portable packaging
+
+A clean checkout runs with Python's standard library; no local Node modules,
+provider binaries, credentials, or workspace data are included. The Dockerfile
+bundles the runtime for another machine, and hosted mode disables local-computer
+integrations. See [portable runtime and deployment](docs/deployment.md) for
+container setup and authentication. Uploading this repository does not deploy a
+live service.
+
 ## JavaScript frontend
 
 The frontend lives separately in [`frontend/`](frontend/README.md) and uses plain JavaScript modules and CSS. It supports project charters, editable agent rosters, goal and dependency creation, task inspection, artifacts, cancellation, and live state refresh. It connects to the same local backend; no bundler or JavaScript runtime is required to serve it.
