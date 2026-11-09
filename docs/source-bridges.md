@@ -53,4 +53,6 @@ Setting `postgres_enabled` to `true` enables the current macOS/Homebrew PostgreS
 
 Setting `aws_login_enabled` to `true` permits `bridge.aws.login` and `bridge.aws.status`. Login starts the official AWS CLI Console sign-in for the local `default` profile with Safari selected. The user completes any password, MFA, and consent prompts. Status checks authentication without returning credentials or identity details. The CLI owns its credential storage; the app does not copy it. A successful launch receipt means that the sign-in process started, not that authentication finished. These actions accept empty parameters and do not grant package, database, or cloud administration access beyond the user's existing AWS permissions.
 
+`bridge.aws.remote_login` opens the official `aws login --remote` alternative in Terminal. This avoids the localhost browser callback. Open the displayed link in Safari, complete AWS authentication, and paste the returned authorization code directly into Terminal. Never paste credentials or authorization codes into the orchestration app or chat.
+
 These settings are operator-controlled private configuration. A model cannot provide executable paths, SSH identities, or arbitrary shell commands as task parameters. All connected capabilities are disabled in hosted mode.

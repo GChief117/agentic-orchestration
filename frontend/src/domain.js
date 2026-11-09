@@ -3,6 +3,7 @@
  */
 export const ACTIONS = {
   "bridge.aws.login": { label: "Sign in to AWS on connected Mac", short: "AWS sign-in" },
+  "bridge.aws.remote_login": { label: "Sign in to AWS using Terminal authorization", short: "AWS alternate sign-in" },
   "bridge.aws.status": { label: "Check saved AWS sign-in", short: "AWS status" },
   "bridge.postgres.prepare": { label: "Prepare local development databases", short: "Local databases" },
   "bridge.pgadmin.register": { label: "Add local PostgreSQL to pgAdmin", short: "pgAdmin connection" },

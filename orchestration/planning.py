@@ -21,6 +21,7 @@ WORKSPACE_ACTIONS = (
     "bridge.postgres.prepare",
     "bridge.pgadmin.register",
     "bridge.aws.login",
+    "bridge.aws.remote_login",
     "bridge.aws.status",
 )
 
@@ -466,6 +467,7 @@ def propose_goal(
         "bridge.pgadmin.register adds that localhost connection to the initialized pgAdmin desktop registry. Both accept parameters={}. "
         "bridge.aws.login opens the official AWS sign-in flow for the default local profile and requires the user to complete any Safari sign-in or MFA prompt. "
         "bridge.aws.status checks saved authentication without returning credentials. Both accept parameters={}; launching sign-in is not proof of authentication. "
+        "bridge.aws.remote_login opens AWS's alternate CLI flow in Terminal, with user-completed browser sign-in and the returned authorization code entered locally. It accepts parameters={} and avoids the localhost callback. "
         "These are real changes on the configured host, not a proposal or simulated result. "
         "Do not invent additional tools, arbitrary commands, app paths, or remote destinations. "
         "Reporting lines describe ownership, while explicit "

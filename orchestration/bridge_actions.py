@@ -551,6 +551,8 @@ def main():
         result = pgadmin_register(payload)
     elif action == "bridge.aws.login":
         result = aws_login(payload)
+    elif action == "bridge.aws.remote_login":
+        result = aws_remote_login(payload)
     elif action == "bridge.aws.status":
         result = aws_status(payload)
     elif action == "bridge.demo.launch":
@@ -748,6 +750,7 @@ class BridgeActions:
                 "bridge.postgres.prepare": "Preparing the four local development databases on the connected Mac",
                 "bridge.pgadmin.register": "Registering the local PostgreSQL connection in pgAdmin on the connected Mac",
                 "bridge.aws.login": "Opening the official AWS sign-in flow on the connected Mac",
+                "bridge.aws.remote_login": "Opening the alternate AWS sign-in flow in Terminal on the connected Mac",
                 "bridge.aws.status": "Checking the connected Mac's saved AWS authentication",
             }
             progress(

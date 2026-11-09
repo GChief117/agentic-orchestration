@@ -15,6 +15,7 @@ class LocalConnection:
         "bridge.postgres.prepare",
         "bridge.pgadmin.register",
         "bridge.aws.login",
+        "bridge.aws.remote_login",
         "bridge.aws.status",
     )
 
