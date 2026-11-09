@@ -18,8 +18,9 @@ import subprocess
 import time
 
 from . import sources
+from .workspace_setup import validate_setup_steps
 
-MAX_CONFIG_BYTES = 65536
+MAX_CONFIG_BYTES = 1024 * 1024
 MAX_OUTPUT_BYTES = 2 * 1024 * 1024
 BRIDGE_TIMEOUT = 30
 INVENTORY_TTL = 30
@@ -217,6 +218,7 @@ class SourceBridges:
                 "editor_profile",
                 "postgres_enabled",
                 "aws_login_enabled",
+                "setup_steps",
             }
         ):
             raise ValueError("Source bridge target has invalid configuration fields")
@@ -324,6 +326,8 @@ class SourceBridges:
             or any(c in entry["editor_profile"] for c in "\n\r\x00")
         ):
             raise ValueError("The editor profile must be a short name")
+        if "setup_steps" in entry:
+            entry["setup_steps"] = validate_setup_steps(entry)
         return entry
 
     def configured(self, project_id):

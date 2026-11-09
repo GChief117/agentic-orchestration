@@ -8,6 +8,10 @@ import uuid
 from .plans import parse_tasks
 from .postgres_setup import SETUP_CAPABILITIES, validate_setup_parameters
 from .aws_access import AWS_CAPABILITIES, validate_aws_parameters
+from .workspace_setup import (
+    SETUP_CAPABILITY,
+    validate_setup_parameters as validate_workspace_setup,
+)
 from .projects import text
 from .estimates import estimate_plan
 from .delivery import parse_deliverable, require_renderer, visual_story_instructions
@@ -23,6 +27,7 @@ WORKSPACE_ACTIONS = (
     "bridge.aws.login",
     "bridge.aws.remote_login",
     "bridge.aws.status",
+    "bridge.setup.run",
 )
 
 
@@ -278,6 +283,8 @@ def _tasks(plan, source_paths, namespace):
                 "Notes source task" if field == "content_task" else "Notes content",
                 80 if field == "content_task" else 48000,
             )
+        elif capability == SETUP_CAPABILITY:
+            task["parameters"] = validate_workspace_setup(params)
         elif capability in AWS_CAPABILITIES:
             task["parameters"] = validate_aws_parameters(capability, params)
         elif capability in SETUP_CAPABILITIES:
@@ -468,6 +475,7 @@ def propose_goal(
         "bridge.aws.login opens the official AWS sign-in flow for the default local profile and requires the user to complete any Safari sign-in or MFA prompt. "
         "bridge.aws.status checks saved authentication without returning credentials. Both accept parameters={}; launching sign-in is not proof of authentication. "
         "bridge.aws.remote_login opens AWS's alternate CLI flow in Terminal, with user-completed browser sign-in and the returned authorization code entered locally. It accepts parameters={} and avoids the localhost callback. "
+        "bridge.setup.run executes only an operator-reviewed setup step from available_setup_steps. Its parameters are {step:the_exact_step_id}; never invent commands or step IDs. "
         "These are real changes on the configured host, not a proposal or simulated result. "
         "Do not invent additional tools, arbitrary commands, app paths, or remote destinations. "
         "Reporting lines describe ownership, while explicit "
@@ -505,6 +513,11 @@ def propose_goal(
             "available_agent_keys": available,
             "available_model_agent_keys": available_models,
             "available_workspace_actions": workspace_actions,
+            "available_setup_steps": action_runtime.setup_steps(project_id)
+            if action_runtime
+            and hasattr(action_runtime, "setup_steps")
+            and action_readiness.get(SETUP_CAPABILITY)
+            else [],
             "selected_source_files": selected_sources,
             "shared_context": shared_context,
             "remote_source_inventory": bridge_inventory,
@@ -549,6 +562,17 @@ def propose_goal(
     )
     summary = text(plan.get("summary"), "Plan summary", 4000)
     tasks = _tasks(plan, paths, uuid.uuid4().hex[:12])
+    setup_ids = (
+        {item["id"] for item in action_runtime.setup_steps(project_id)}
+        if action_runtime and hasattr(action_runtime, "setup_steps")
+        else set()
+    )
+    if any(
+        task["capability"] == SETUP_CAPABILITY
+        and task["parameters"]["step"] not in setup_ids
+        for task in tasks
+    ):
+        raise ValueError("The coordinator must select a configured setup step")
     if (
         bridge_inventory
         and not native

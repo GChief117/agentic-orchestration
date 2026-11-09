@@ -14,6 +14,12 @@ import zipfile
 
 from .cli_models import CLIRuntime
 from .aws_access import AWS_CAPABILITIES, REMOTE_AWS_ACCESS, validate_aws_parameters
+from .workspace_setup import (
+    SETUP_CAPABILITY,
+    REMOTE_WORKSPACE_SETUP,
+    validate_setup_parameters as validate_workspace_setup_parameters,
+    validate_setup_steps,
+)
 from .postgres_setup import (
     REMOTE_POSTGRES_SETUP,
     SETUP_CAPABILITIES,
@@ -497,6 +503,8 @@ def demo_launch(payload):
             config[project_id]["postgres_enabled"] = True
         if payload.get("aws_login_enabled") is True:
             config[project_id]["aws_login_enabled"] = True
+        if payload.get("setup_steps"):
+            config[project_id]["setup_steps"] = payload["setup_steps"]
         atomic_json(data / "source-bridges.json", config)
         installation.update(project_id=project_id, state="seeded")
         atomic_json(record, installation)
@@ -529,6 +537,7 @@ def demo_launch(payload):
 '''
     + REMOTE_POSTGRES_SETUP
     + REMOTE_AWS_ACCESS
+    + REMOTE_WORKSPACE_SETUP
     + r'''
 def main():
     """Verify the target before selecting one of the fixed allowed actions."""
@@ -543,6 +552,8 @@ def main():
     action = payload["action"]
     if action == "bridge.notes.create":
         result = notes_create(payload)
+    elif action == "bridge.setup.run":
+        result = workspace_setup(payload)
     elif action == "bridge.workspace.open":
         result = workspace_open(payload)
     elif action == "bridge.postgres.prepare":
@@ -591,6 +602,7 @@ class BridgeActions:
                 "bridge.notes.create",
                 "bridge.demo.launch",
                 "bridge.workspace.open",
+                SETUP_CAPABILITY,
             }
             | SETUP_CAPABILITIES
             | AWS_CAPABILITIES
@@ -603,6 +615,7 @@ class BridgeActions:
             "bridge.notes.create": "notes_enabled",
             "bridge.demo.launch": "demo_directory",
             "bridge.workspace.open": "editor_workspace",
+            SETUP_CAPABILITY: "setup_steps",
             **{action: "postgres_enabled" for action in SETUP_CAPABILITIES},
             **{action: "aws_login_enabled" for action in AWS_CAPABILITIES},
         }
@@ -615,6 +628,16 @@ class BridgeActions:
             or capability in SETUP_CAPABILITIES | AWS_CAPABILITIES
             else bool(value)
         )
+
+    def setup_steps(self, project_id):
+        """Expose approved step labels without private commands or environment values."""
+        if not self.ready(project_id, SETUP_CAPABILITY):
+            return []
+        entry = self.source_bridges._configuration(project_id)
+        return [
+            {"id": name, "label": step["label"]}
+            for name, step in validate_setup_steps(entry).items()
+        ]
 
     def _archive(self):
         """Package runtime source only; exclude state, credentials, tests, and dependencies."""
@@ -675,7 +698,18 @@ class BridgeActions:
             parameters=parameters,
             operation_id=operation_id or "task",
         )
-        if capability == "bridge.notes.create":
+        action_timeout = ACTION_TIMEOUT
+        if capability == SETUP_CAPABILITY:
+            selected = validate_workspace_setup_parameters(parameters)
+            steps = validate_setup_steps(entry)
+            step = steps.get(selected["step"])
+            if step is None:
+                raise ValueError("This setup step is not configured for the project")
+            if not operation_id:
+                raise ValueError("Setup requires a stable task operation identity")
+            payload.update(parameters=selected, setup_step=step)
+            action_timeout = step["timeout_seconds"] + 60
+        elif capability == "bridge.notes.create":
             title, content = parameters.get("title"), parameters.get("content")
             if not isinstance(title, str) or not title.strip() or len(title) > 200:
                 raise ValueError("A note title of 1–200 characters is required")
@@ -737,6 +771,8 @@ class BridgeActions:
                 payload["editor_profile"] = entry.get("editor_profile", "Default")
             payload["postgres_enabled"] = entry.get("postgres_enabled") is True
             payload["aws_login_enabled"] = entry.get("aws_login_enabled") is True
+            if entry.get("setup_steps"):
+                payload["setup_steps"] = validate_setup_steps(entry)
         encoded = json.dumps(payload, ensure_ascii=False).encode()
         if len(encoded) > MAX_ACTION_INPUT:
             raise ValueError("Bridge action input exceeds its size limit")
@@ -752,6 +788,8 @@ class BridgeActions:
                 "bridge.aws.login": "Opening the official AWS sign-in flow on the connected Mac",
                 "bridge.aws.remote_login": "Opening the alternate AWS sign-in flow in Terminal on the connected Mac",
                 "bridge.aws.status": "Checking the connected Mac's saved AWS authentication",
+                SETUP_CAPABILITY: "Running the approved setup step: "
+                + (payload.get("setup_step", {}).get("label", "workspace setup")),
             }
             progress(
                 {
@@ -770,7 +808,7 @@ class BridgeActions:
             [entry["agent_command"], command],
             encoded,
             self.application_root,
-            ACTION_TIMEOUT,
+            action_timeout,
             cancelled,
         )
         try:

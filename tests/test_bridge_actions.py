@@ -180,6 +180,74 @@ class BridgeActionTests(unittest.TestCase):
                 )
         self.assertEqual(self.calls, [])
 
+    def test_setup_catalog_hides_commands_and_execution_uses_reviewed_step(self):
+        specification = {
+            "label": "Install dependencies",
+            "repository": "sample",
+            "argv": ["/opt/homebrew/bin/uv", "sync"],
+            "timeout_seconds": 900,
+            "input_hashes": {"pyproject.toml": "a" * 64},
+            "verify_argv": ["/opt/homebrew/bin/uv", "--version"],
+            "aws_account_id": "551127968046",
+            "aws_profile": "default",
+            "env": {"AWS_PROFILE": "polaris-runtime"},
+        }
+        self.assertEqual(self.adapter.setup_steps("project"), [])
+        self.bridges.entry["setup_steps"] = {"sample.install": specification}
+        self.assertEqual(
+            self.adapter.setup_steps("project"),
+            [{"id": "sample.install", "label": "Install dependencies"}],
+        )
+        progress = []
+        self.adapter.execute(
+            "project",
+            "bridge.setup.run",
+            {"step": "sample.install"},
+            operation_id="setup-test",
+            progress=progress.append,
+        )
+        _, payload, _, timeout, _ = self.calls[-1]
+        self.assertEqual(timeout, 960)
+        self.assertEqual(payload["setup_step"]["argv"], specification["argv"])
+        self.assertEqual(payload["parameters"], {"step": "sample.install"})
+        self.assertNotIn("uv", json.dumps(progress))
+        self.assertNotIn("AWS_PROFILE", json.dumps(progress))
+        for parameters in (
+            {"step": "unknown"},
+            {"step": "sample.install", "argv": ["shell"]},
+        ):
+            with self.subTest(parameters=parameters), self.assertRaises(ValueError):
+                self.adapter.execute(
+                    "project", "bridge.setup.run", parameters, operation_id="another"
+                )
+        with self.assertRaisesRegex(ValueError, "operation identity"):
+            self.adapter.execute(
+                "project", "bridge.setup.run", {"step": "sample.install"}
+            )
+        self.assertEqual(len(self.calls), 1)
+
+    def test_fixed_remote_program_dispatches_setup_only_after_identity_check(self):
+        namespace = remote_namespace()
+        calls = []
+        namespace["workspace_setup"] = lambda payload: calls.append(payload) or {
+            "verified": True
+        }
+        payload = {
+            "hostname": namespace["socket"].gethostname(),
+            "username": getpass.getuser(),
+            "action": "bridge.setup.run",
+            "parameters": {"step": "sample.install"},
+        }
+        namespace["sys"] = types.SimpleNamespace(
+            stdin=types.SimpleNamespace(buffer=io.BytesIO(json.dumps(payload).encode()))
+        )
+        self.assertEqual(namespace["main"]()["result"], {"verified": True})
+        payload["hostname"] = "wrong-target"
+        namespace["sys"].stdin.buffer = io.BytesIO(json.dumps(payload).encode())
+        with self.assertRaisesRegex(ValueError, "identity"):
+            namespace["main"]()
+        self.assertEqual(len(calls), 1)
+
     def test_fixed_remote_program_dispatches_database_setup_after_identity_check(self):
         for capability, function in (
             ("bridge.postgres.prepare", "postgres_prepare"),

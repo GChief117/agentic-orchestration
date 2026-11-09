@@ -91,6 +91,7 @@ export function openGoalForm(
       content: "",
       note_title: "",
       port: "8765",
+      setup_step: view.project.setup_steps?.[0]?.id || "",
       expected: "",
       prompt: "",
       source_files: [],
@@ -159,6 +160,7 @@ export function openGoalForm(
       note_title: task.parameters?.title || "",
       content_task: task.parameters?.content_task || "",
       port: String(task.parameters?.port || "8765"),
+      setup_step: task.parameters?.step || "",
       expected: task.parameters?.expected || "",
       max_tokens: task.parameters?.max_tokens == null
         ? ""
@@ -270,6 +272,7 @@ export function openGoalForm(
             "content",
             "note_title",
             "port",
+            "setup_step",
             "expected",
             "prompt",
             "max_tokens",
@@ -344,6 +347,12 @@ export function openGoalForm(
   function modelSettings(agent, task) {
     return `<details class="advanced-settings" data-task-advanced ${task.advanced_open ? "open" : ""}><summary>Advanced settings</summary>${input("Save result as", "path", task.path || resultPath(task), { hint: "The generated result is saved here inside this project's output folder. This is not a source file to read." })}${tokenLimitInput(agent, task)}</details>`;
   }
+  /** Offer only setup step IDs published by the configured workspace adapter. */
+  function setupStepFields(task) {
+    const steps = view.project.setup_steps || [];
+    if (!steps.some((step) => step.id === task.setup_step)) task.setup_step = steps[0]?.id || "";
+    return `<label class="field"><span>Approved setup step</span><select data-field="setup_step" aria-label="Approved setup step" required><option value="">Choose a setup step</option>${steps.map((step) => `<option value="${e(step.id)}" ${step.id === task.setup_step ? "selected" : ""}>${e(step.label)}</option>`).join("")}</select><small>Runs the configured workspace operation and verifies its result.</small></label>`;
+  }
   /**
    * Render task editors, constrain action choices by agent, and bind graph editing.
    */
@@ -356,7 +365,7 @@ export function openGoalForm(
         const capabilities = agent.capabilities;
         if (!capabilities.includes(task.capability))
           task.capability = capabilities[0];
-        return `<fieldset class="task-editor" data-task="${e(task.id)}"><legend>Step ${index + 1} · ${e(task.id)}</legend>${renderTaskTiming(planTiming?.task_timings?.[task.id], { preview: true })}${input("Task title", "title", task.title, { required: true })}<div class="form-grid"><label class="field"><span>Assigned agent</span><select aria-label="Assigned agent" data-field="agent">${view.agents.map((candidate) => `<option value="${e(candidate.key)}" ${agent.key === candidate.key ? "selected" : ""}>${e(candidate.name)} · ${e(candidate.role)}</option>`).join("")}</select></label><label class="field"><span>Action</span><select aria-label="Action" data-field="capability">${capabilities.map((cap) => `<option value="${e(cap)}" ${task.capability === cap ? "selected" : ""}>${e(ACTIONS[cap]?.label || cap)}</option>`).join("")}</select></label></div>${task.capability.startsWith("files.") ? input("Project-relative file path", "path", task.path, { required: true, hint: "For example: release/checklist.txt" }) : task.capability === "terminal.python_version" ? '<p class="muted">Checks the configured Python runtime on the local target.</p>' : ""}${task.capability === "model.generate" ? `<p class="muted">${agent.execution_mode === "cli" ? "Local CLI" : "API key"} · ${e(agent.provider || "No provider")} · ${e(agent.model || "No model selected")}</p>${input("Task prompt", "prompt", task.prompt || "", { required: true, textarea: true, rows: 5 })}${sourcePicker(task)}${modelSettings(agent, task)}` : ""}${task.capability === "bridge.notes.create" ? `${input("Note title", "note_title", task.note_title || "", { required: true })}${task.content_task ? `<p class="muted">The note uses the completed result from ${e(task.content_task)}.</p>` : input("Note content", "content", task.content || "", { required: true, textarea: true, rows: 5, hint: "Creates a draft in Notes on the connected Mac. It does not send a message." })}` : ""}${task.capability === "bridge.demo.launch" ? input("Demo port", "port", task.port || "8765", { number: true, required: true, hint: "Launches the prepared workspace demo at this loopback port on the connected Mac." }) : ""}${task.capability === "files.write" ? input("File contents", "content", task.content, { textarea: true }) : ""}${task.capability === "files.inspect" ? `<label class="checkbox-line"><input type="checkbox" data-field="compare" ${task.compare ? "checked" : ""}> Compare exact contents</label>${task.compare ? input("Expected contents", "expected", task.expected, { textarea: true }) : '<p class="muted">Checks that the file is readable and records its digest.</p>'}` : ""}<div class="dependency-picker"><span class="label">Wait for these tasks to be verified</span>${
+        return `<fieldset class="task-editor" data-task="${e(task.id)}"><legend>Step ${index + 1} · ${e(task.id)}</legend>${renderTaskTiming(planTiming?.task_timings?.[task.id], { preview: true })}${input("Task title", "title", task.title, { required: true })}<div class="form-grid"><label class="field"><span>Assigned agent</span><select aria-label="Assigned agent" data-field="agent">${view.agents.map((candidate) => `<option value="${e(candidate.key)}" ${agent.key === candidate.key ? "selected" : ""}>${e(candidate.name)} · ${e(candidate.role)}</option>`).join("")}</select></label><label class="field"><span>Action</span><select aria-label="Action" data-field="capability">${capabilities.map((cap) => `<option value="${e(cap)}" ${task.capability === cap ? "selected" : ""}>${e(ACTIONS[cap]?.label || cap)}</option>`).join("")}</select></label></div>${task.capability.startsWith("files.") ? input("Project-relative file path", "path", task.path, { required: true, hint: "For example: release/checklist.txt" }) : task.capability === "terminal.python_version" ? '<p class="muted">Checks the configured Python runtime on the local target.</p>' : ""}${task.capability === "model.generate" ? `<p class="muted">${agent.execution_mode === "cli" ? "Local CLI" : "API key"} · ${e(agent.provider || "No provider")} · ${e(agent.model || "No model selected")}</p>${input("Task prompt", "prompt", task.prompt || "", { required: true, textarea: true, rows: 5 })}${sourcePicker(task)}${modelSettings(agent, task)}` : ""}${task.capability === "bridge.notes.create" ? `${input("Note title", "note_title", task.note_title || "", { required: true })}${task.content_task ? `<p class="muted">The note uses the completed result from ${e(task.content_task)}.</p>` : input("Note content", "content", task.content || "", { required: true, textarea: true, rows: 5, hint: "Creates a draft in Notes on the connected Mac. It does not send a message." })}` : ""}${task.capability === "bridge.demo.launch" ? input("Demo port", "port", task.port || "8765", { number: true, required: true, hint: "Launches the prepared workspace demo at this loopback port on the connected Mac." }) : ""}${task.capability === "bridge.setup.run" ? setupStepFields(task) : ""}${task.capability === "files.write" ? input("File contents", "content", task.content, { textarea: true }) : ""}${task.capability === "files.inspect" ? `<label class="checkbox-line"><input type="checkbox" data-field="compare" ${task.compare ? "checked" : ""}> Compare exact contents</label>${task.compare ? input("Expected contents", "expected", task.expected, { textarea: true }) : '<p class="muted">Checks that the file is readable and records its digest.</p>'}` : ""}<div class="dependency-picker"><span class="label">Wait for these tasks to be verified</span>${
           tasks
             .filter((other) => other.id !== task.id)
             .map(

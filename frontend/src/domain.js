@@ -2,6 +2,7 @@
  * Human-readable labels for capabilities supported by the local backend.
  */
 export const ACTIONS = {
+  "bridge.setup.run": { label: "Run an approved workspace setup step", short: "Workspace setup" },
   "bridge.aws.login": { label: "Sign in to AWS on connected Mac", short: "AWS sign-in" },
   "bridge.aws.remote_login": { label: "Sign in to AWS using Terminal authorization", short: "AWS alternate sign-in" },
   "bridge.aws.status": { label: "Check saved AWS sign-in", short: "AWS status" },
@@ -303,6 +304,9 @@ export function goalPayload(projectId, title, drafts, agents) {
     if (draft.capability === "bridge.demo.launch") {
       parameters.port = positive(draft.port || "8765", "Demo port");
       if (parameters.port < 1024 || parameters.port > 65535) throw new Error("Use a demo port from 1024 to 65535.");
+    }
+    if (draft.capability === "bridge.setup.run") {
+      parameters.step = required(draft.setup_step, "Setup step");
     }
     return {
       id: draft.id,

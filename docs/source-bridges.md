@@ -55,4 +55,12 @@ Setting `aws_login_enabled` to `true` permits `bridge.aws.login` and `bridge.aws
 
 `bridge.aws.remote_login` opens the official `aws login --remote` alternative in Terminal. This avoids the localhost browser callback. Open the displayed link in Safari, complete AWS authentication, and paste the returned authorization code directly into Terminal. Never paste credentials or authorization codes into the orchestration app or chat.
 
+## Reviewed setup steps
+
+`bridge.setup.run` lets an assigned team member install dependencies, configure a local workspace, or run migrations using an operator-reviewed step. Add a private `setup_steps` map to the bridge configuration. Each entry contains a display `label`, configured `repository`, absolute `argv` and `verify_argv` vectors, `timeout_seconds` (up to 1,800), `input_hashes` mapping repository-relative files to SHA-256 digests, and the expected `aws_account_id` and `aws_profile`. Optional `env` settings must be bounded, non-secret values. Keep credentials in the provider's credential store.
+
+The task selects only a step ID, for example `{"step":"backend.install"}`. The planner and manual task form expose IDs and labels, while executable definitions remain private. Every run verifies the connected host, reviewed input hashes, and AWS account before starting. Commands must finish within their limit, and their separate verification command must succeed before the task is accepted. Native command output is suppressed; receipts report the step, exit status, verification, and duration.
+
+Setup takes an exclusive workspace lock and records operation ownership on the connected host. Completed operations return their stored receipt instead of running twice. Failed or interrupted operations require inspection before retrying; an unresolved running record blocks new work. Use task dependencies to order setup steps. Persistent services require a reviewed launcher that finishes after checking service health, rather than a command that runs indefinitely.
+
 These settings are operator-controlled private configuration. A model cannot provide executable paths, SSH identities, or arbitrary shell commands as task parameters. All connected capabilities are disabled in hosted mode.

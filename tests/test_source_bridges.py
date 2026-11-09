@@ -230,6 +230,33 @@ class SourceBridgeTests(unittest.TestCase):
                 self.bridge.configured("project123")
         self.assertEqual(self.calls, [])
 
+    def test_setup_steps_are_strict_private_configuration(self):
+        self.entry["setup_steps"] = {
+            "sample.install": {
+                "label": "Install dependencies",
+                "repository": "sample",
+                "argv": ["/usr/bin/python3", "-V"],
+                "timeout_seconds": 900,
+                "input_hashes": {"pyproject.toml": "A" * 64},
+                "verify_argv": ["/usr/bin/python3", "-V"],
+                "aws_account_id": "551127968046",
+                "aws_profile": "default",
+            }
+        }
+        self.write_config()
+        configured = self.bridge._configuration("project123")
+        self.assertEqual(
+            configured["setup_steps"]["sample.install"]["input_hashes"][
+                "pyproject.toml"
+            ],
+            "a" * 64,
+        )
+        self.entry["setup_steps"]["sample.install"]["argv"] = ["relative-program"]
+        self.write_config()
+        with self.assertRaisesRegex(ValueError, "reviewed configuration"):
+            self.bridge.configured("project123")
+        self.assertEqual(self.calls, [])
+
     def test_runner_has_bounded_output_timeout_and_generic_failure(self):
         with self.assertRaisesRegex(ValueError, "size limit"):
             SourceBridges._run([sys.executable, "-c", "print('x' * 2200000)"], 2)

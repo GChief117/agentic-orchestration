@@ -380,6 +380,12 @@ class Engine:
                     raise ValueError(
                         "This project is not connected to the requested workspace capability"
                     )
+                if task.capability == "bridge.setup.run" and task.parameters[
+                    "step"
+                ] not in {
+                    item["id"] for item in self.bridge_actions.setup_steps(project_id)
+                }:
+                    raise ValueError("Choose a configured setup step for this project")
                 if task.capability == "model.generate":
                     agent = by_id[task.agent_id]
                     if research_mode == "native_cli":
@@ -873,10 +879,16 @@ class Engine:
                     "bridge.aws.login",
                     "bridge.aws.remote_login",
                     "bridge.aws.status",
+                    "bridge.setup.run",
                 )
                 if self.bridge_actions
                 and self.bridge_actions.ready(project["id"], capability)
             ]
+            project["setup_steps"] = (
+                self.bridge_actions.setup_steps(project["id"])
+                if self.bridge_actions and hasattr(self.bridge_actions, "setup_steps")
+                else []
+            )
             research_available = bool(
                 self.research and self.research.ready(project["id"], "openai")
             )

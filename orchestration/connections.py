@@ -17,6 +17,7 @@ class LocalConnection:
         "bridge.aws.login",
         "bridge.aws.remote_login",
         "bridge.aws.status",
+        "bridge.setup.run",
     )
 
     def __init__(self, workspace):
