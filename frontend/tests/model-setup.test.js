@@ -78,6 +78,101 @@ test("local agents use native CLI models and preserve execution mode in saved ro
   }
 });
 
+test("CLI speed choices follow model support and survive a saved team payload", () => {
+  const dom = new JSDOM('<div id="editor"></div>');
+  try {
+    const root = dom.window.document.querySelector("#editor");
+    const draft = guidedDraft();
+    const editor = mountOrganizationEditor({
+      root, agents: draft.agents, maxConcurrency: 2,
+      modelProviders: [
+        { id: "openai", configured: false, models: [], cli: {
+          configured: true, models: ["default", "fast-model", "standard-model"],
+          speed_modes: ["standard", "fast", "ultrafast"],
+          model_speed_modes: { "standard-model": ["standard"] },
+        } },
+        { id: "gemini", configured: false, models: [], cli: {
+          configured: true, models: ["default"], speed_modes: ["standard"],
+        } },
+      ],
+    });
+    const mode = root.querySelector("[data-agent-execution-mode]");
+    assert.equal(mode.options[0].value, "cli");
+    assert.equal(mode.value, "cli");
+    change(dom, root.querySelector("[data-agent-provider]"), "openai");
+    change(dom, root.querySelector("[data-agent-model]"), "fast-model");
+    assert.deepEqual(
+      [...root.querySelector("[data-agent-speed]").options].map((option) => option.textContent),
+      ["Standard", "Fast", "Ultrafast"],
+    );
+    change(dom, root.querySelector("[data-agent-speed]"), "ultrafast");
+    const team = editor.snapshot();
+    const payload = projectPayload({ ...draft, ...team, name: "Fast team", objective: "Complete work" });
+    assert.equal(payload.agents[0].execution_speed, "ultrafast");
+    assert.equal(changeRole(team.agents[0], "writer").execution_speed, "ultrafast");
+    change(dom, root.querySelector("[data-agent-model]"), "standard-model");
+    assert.equal(editor.snapshot().agents[0].execution_speed, "standard");
+    assert.equal(root.querySelector("[data-agent-speed]"), null);
+    assert.match(root.querySelector("[data-chart-message]").textContent, /reset to Standard/);
+    change(dom, root.querySelector("[data-agent-model]"), "fast-model");
+    change(dom, root.querySelector("[data-agent-speed]"), "fast");
+    change(dom, root.querySelector("[data-agent-provider]"), "gemini");
+    assert.equal(editor.snapshot().agents[0].execution_speed, "standard");
+    assert.equal(root.querySelector("[data-agent-speed]"), null);
+    editor.destroy();
+  } finally {
+    dom.window.close();
+  }
+});
+
+test("providerless local teams start on CLI while configured API agents retain their mode", () => {
+  const dom = new JSDOM('<div id="editor"></div>');
+  try {
+    const root = dom.window.document.querySelector("#editor");
+    const agents = guidedDraft().agents;
+    agents[0].execution_mode = "api";
+    agents[1].execution_mode = "api";
+    agents[1].provider = "openai";
+    agents[1].model = "api-model";
+    const editor = mountOrganizationEditor({
+      root, agents, maxConcurrency: 2,
+      modelProviders: [{ id: "openai", configured: true, models: ["api-model"], cli: {
+        configured: true, models: ["default"], speed_modes: ["standard"],
+      } }],
+    });
+    assert.equal(editor.snapshot().agents[0].execution_mode, "cli");
+    assert.equal(editor.snapshot().agents[1].execution_mode, "api");
+    editor.destroy();
+  } finally {
+    dom.window.close();
+  }
+});
+
+test("opening an editor retains saved speed while CLI capabilities are unavailable", () => {
+  for (const state of ["unverified", "signed_out"]) {
+    const dom = new JSDOM('<div id="editor"></div>');
+    try {
+      const root = dom.window.document.querySelector("#editor");
+      const draft = guidedDraft();
+      Object.assign(draft.agents[0], {
+        provider: "openai", model: "saved-model", execution_speed: "ultrafast",
+      });
+      const editor = mountOrganizationEditor({
+        root, agents: draft.agents, maxConcurrency: 2,
+        modelProviders: [{ id: "openai", cli: { configured: false, state, models: [] } }],
+      });
+      assert.equal(editor.snapshot().agents[0].execution_speed, "ultrafast");
+      assert.equal(root.querySelector("[data-agent-speed]").value, "ultrafast");
+      assert.match(root.querySelector("[data-agent-speed]").selectedOptions[0].textContent, /saved; verify connection/);
+      const payload = projectPayload({ ...draft, ...editor.snapshot(), name: "Saved speed", objective: "Keep settings" });
+      assert.equal(payload.agents[0].execution_speed, "ultrafast");
+      editor.destroy();
+    } finally {
+      dom.window.close();
+    }
+  }
+});
+
 test("API connection form clears keys and never stores them in the browser", async () => {
   const dom = new JSDOM("<body></body>", { url: "http://localhost" });
   try {

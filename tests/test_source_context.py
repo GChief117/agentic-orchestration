@@ -42,6 +42,7 @@ class SourceContextTests(unittest.TestCase):
                 builder = next(agent for agent in roster if agent["key"] == "builder")
                 builder.update(
                     provider="openai",
+                    execution_mode="api",
                     model="test-model",
                     capabilities=["model.generate"],
                 )

@@ -15,6 +15,82 @@ from orchestration.cli_models import CLIRuntime
 
 
 class CLIRuntimeTests(unittest.TestCase):
+    def test_native_model_catalog_exposes_only_advertised_speeds(self):
+        def run(args, *_rest):
+            if args[-2:] == ["debug", "models"]:
+                text = json.dumps(
+                    {
+                        "models": [
+                            {
+                                "slug": "both-speeds",
+                                "additional_speed_tiers": ["fast", "ultrafast"],
+                            },
+                            {
+                                "slug": "fast-only",
+                                "service_tiers": [{"id": "priority"}],
+                            },
+                            {"slug": "standard-only"},
+                        ]
+                    }
+                )
+            else:
+                text = "Logged in"
+            return subprocess.CompletedProcess(args, 0, text.encode(), b"")
+
+        runtime = CLIRuntime(runner=run)
+        with patch("orchestration.cli_models.shutil.which", return_value="/tool/codex"):
+            runtime.refresh("openai")
+        entry = runtime.status("openai")
+        self.assertEqual(entry["speed_modes"], ["standard", "fast", "ultrafast"])
+        self.assertEqual(
+            entry["model_speed_modes"],
+            {
+                "default": ["standard"],
+                "both-speeds": ["standard", "fast", "ultrafast"],
+                "fast-only": ["standard", "fast"],
+                "standard-only": ["standard"],
+            },
+        )
+        self.assertEqual(runtime.status("claude")["speed_modes"], ["standard"])
+
+    def test_codex_speed_reaches_native_service_tier_without_a_fallback(self):
+        calls = []
+
+        def run(args, *_rest):
+            calls.append(args)
+            output = b'{"type":"item.completed","item":{"type":"agent_message","text":"Done"}}\n{"type":"turn.completed"}'
+            return subprocess.CompletedProcess(args, 0, output, b"")
+
+        runtime = CLIRuntime(runner=run)
+        runtime.entries["openai"] = runtime._entry(
+            "openai",
+            "signed_in",
+            ["model-a"],
+            {"model-a": ["standard", "fast", "ultrafast"]},
+        )
+        with patch("orchestration.cli_models.shutil.which", return_value="/tool/codex"):
+            for speed, tier in [
+                ("standard", "default"),
+                ("fast", "fast"),
+                ("ultrafast", "ultrafast"),
+            ]:
+                result = runtime.generate(
+                    "openai", "model-a", "system", "task", 20, speed=speed
+                )
+                self.assertTrue(result["complete"])
+                self.assertIn(f'service_tier="{tier}"', calls[-1])
+            for provider, model, speed in [
+                ("claude", "model-a", "fast"),
+                ("gemini", "model-a", "ultrafast"),
+                ("openai", "default", "fast"),
+                ("openai", "missing-model", "ultrafast"),
+                ("openai", "model-a", "invalid"),
+            ]:
+                count = len(calls)
+                with self.assertRaises(ValueError):
+                    runtime.generate(provider, model, "system", "task", 20, speed=speed)
+                self.assertEqual(len(calls), count)
+
     def test_refresh_uses_native_checks_but_catalog_is_cached_and_redacted(self):
         calls = []
 

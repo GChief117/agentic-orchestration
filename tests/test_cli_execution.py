@@ -18,9 +18,23 @@ class FakeCLI:
         """Represent a previously verified native sign-in in these isolated tests."""
         return True
 
-    def generate(self, provider, model, system, prompt, max_tokens, *, cancelled=None):
+    def validate_speed(self, _provider, _model, speed):
+        """Keep requested tiers visible for adapter-independent routing checks."""
+        return speed
+
+    def generate(
+        self,
+        provider,
+        model,
+        system,
+        prompt,
+        max_tokens,
+        *,
+        cancelled=None,
+        speed="standard",
+    ):
         """Return distinct provider output so downstream handoffs can be checked."""
-        self.calls.append((provider, model, system, prompt))
+        self.calls.append((provider, model, system, prompt, speed))
         return {
             "text": provider + " completed its assigned work",
             "complete": True,
@@ -43,6 +57,7 @@ class CLIExecutionTests(unittest.TestCase):
                 model="default",
                 execution_mode="cli",
                 capabilities=["model.generate"],
+                execution_speed="ultrafast" if provider == "openai" else "standard",
             )
         return definition
 
@@ -90,10 +105,14 @@ class CLIExecutionTests(unittest.TestCase):
                 )
                 self.assertIn("gemini completed", runtime.calls[1][3])
                 self.assertIn("openai completed", runtime.calls[2][3])
+                self.assertEqual(runtime.calls[1][4], "ultrafast")
                 self.assertIn(definition["charter"]["objective"], runtime.calls[0][2])
                 for task in state["tasks"]:
                     self.assertEqual(task["receipt"]["execution_mode"], "cli")
                     self.assertFalse(task["receipt"]["token_limit_enforced"])
+                self.assertEqual(
+                    state["tasks"][1]["receipt"]["execution_speed"], "ultrafast"
+                )
             finally:
                 engine.close()
             engine = Engine(directory, execution_limit=3)
@@ -103,6 +122,9 @@ class CLIExecutionTests(unittest.TestCase):
                         agent["execution_mode"] == "cli"
                         for agent in engine.snapshot()["agents"]
                     )
+                )
+                self.assertEqual(
+                    engine.snapshot()["agents"][1]["execution_speed"], "ultrafast"
                 )
             finally:
                 engine.close()

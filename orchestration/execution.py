@@ -161,6 +161,7 @@ class LocalExecutor:
                         prompt,
                         params["max_tokens"],
                         cancelled=cancelled,
+                        speed=agent.get("execution_speed", "standard"),
                     )
                 except InterruptedError:
                     raise ExecutionCancelled("Local CLI task was cancelled") from None
@@ -192,6 +193,7 @@ class LocalExecutor:
                 provider=agent["provider"],
                 model=agent["model"],
                 execution_mode=execution_mode,
+                execution_speed=agent.get("execution_speed", "standard"),
                 source_files=[
                     {"path": item["path"], "sha256": item["sha256"]}
                     for item in source_files

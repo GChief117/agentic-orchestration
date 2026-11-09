@@ -118,6 +118,7 @@ export function makeAgent(roleKey, key, parent = "") {
     max_concurrency: "1",
     provider: "",
     execution_mode: "cli",
+    execution_speed: "standard",
     model: "",
     collaborators: [],
   };
@@ -145,6 +146,7 @@ export function changeRole(agent, roleKey) {
     max_concurrency: agent.max_concurrency,
     provider: agent.provider,
     execution_mode: agent.execution_mode || "api",
+    execution_speed: agent.execution_speed || "standard",
     model: agent.model,
     collaborators: [...(agent.collaborators || [])],
     capabilities: agent.provider

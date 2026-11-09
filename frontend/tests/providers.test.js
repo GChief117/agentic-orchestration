@@ -126,3 +126,31 @@ test("native sign-in confirmation updates automatically and polling stops on clo
     dom.window.close();
   }
 });
+
+test("speed capability changes refresh the available model settings", async () => {
+  const dom = new JSDOM("<!doctype html><body></body>");
+  try {
+    let changes = 0;
+    let speeds = ["standard"];
+    const controller = mountDialog(dom.window.document, "Connections", "Test");
+    const content = controller.dialog.querySelector("[data-content]");
+    await mountProviderPanel(content, controller, {
+      async providers() {
+        return { providers: [{
+          id: "openai", name: "OpenAI", tool: "Codex CLI",
+          state: "signed_in", installed: true, can_launch: true,
+          models: ["test-model"], command: "codex login",
+          docs: "https://developers.openai.com/codex/auth",
+          speed_modes: speeds, model_speed_modes: { "test-model": speeds },
+        }] };
+      },
+    }, async () => { changes += 1; }, 60000);
+    speeds = ["standard", "fast", "ultrafast"];
+    content.querySelector("[data-refresh-providers]").click();
+    await tick();
+    assert.equal(changes, 2);
+    controller.dialog.close();
+  } finally {
+    dom.window.close();
+  }
+});

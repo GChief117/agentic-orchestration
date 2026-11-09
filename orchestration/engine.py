@@ -221,6 +221,12 @@ class Engine:
                         raise ValueError(
                             "Connect the assigned model provider before submitting this goal"
                         )
+                    if agent.get("execution_mode", "api") == "cli":
+                        runtime.validate_speed(
+                            agent["provider"],
+                            agent["model"],
+                            agent.get("execution_speed", "standard"),
+                        )
             with self.store.db:
                 goal_id = self.store.create_goal(
                     project_id, title.strip(), definitions, "local-workspace"

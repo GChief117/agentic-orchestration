@@ -29,6 +29,7 @@ CLI_PROVIDERS = {
 MAX_OUTPUT_BYTES = 4 * 1024 * 1024
 MAX_TEXT_BYTES = 65536
 REFRESH_SECONDS = 2
+SPEED_MODES = ("standard", "fast", "ultrafast")
 
 
 class CLIRuntime:
@@ -44,9 +45,10 @@ class CLIRuntime:
         self.entries = {key: self._entry(key, "unverified") for key in CLI_PROVIDERS}
 
     @staticmethod
-    def _entry(provider, state, models=None):
+    def _entry(provider, state, models=None, model_speed_modes=None):
         """Build public metadata containing no CLI output or account details."""
         info = CLI_PROVIDERS[provider]
+        model_modes = model_speed_modes or {}
         return {
             "id": provider,
             "name": info["name"],
@@ -54,6 +56,13 @@ class CLIRuntime:
             "configured": state == "signed_in",
             "state": state,
             "models": list(models or []),
+            "speed_modes": [
+                speed
+                for speed in SPEED_MODES
+                if speed == "standard"
+                or any(speed in modes for modes in model_modes.values())
+            ],
+            "model_speed_modes": copy.deepcopy(model_modes),
         }
 
     @staticmethod
@@ -166,6 +175,7 @@ class CLIRuntime:
         if result.returncode != 0:
             return self._entry(provider, self._failure_state(result))
         models = ["default"]
+        model_speed_modes = {"default": ["standard"]}
         try:
             result = self._metadata([binary, "debug", "models"])
             if result.returncode == 0:
@@ -177,6 +187,7 @@ class CLIRuntime:
                     ):
                         try:
                             models.append(model_name(item.get("slug")))
+                            model_speed_modes[item["slug"]] = self._model_speeds(item)
                         except ValueError:
                             pass
         except (
@@ -187,7 +198,30 @@ class CLIRuntime:
             subprocess.SubprocessError,
         ):
             pass  # Native model discovery is optional after a successful login check.
-        return self._entry(provider, "signed_in", list(dict.fromkeys(models)))
+        return self._entry(
+            provider, "signed_in", list(dict.fromkeys(models)), model_speed_modes
+        )
+
+    @staticmethod
+    def _model_speeds(model):
+        """Normalize only speed tiers explicitly advertised by the native catalog."""
+        advertised = model.get("additional_speed_tiers", [])
+        tiers = model.get("service_tiers", [])
+        if not isinstance(advertised, list):
+            advertised = []
+        if not isinstance(tiers, list):
+            tiers = []
+        values = [
+            *advertised,
+            *(item.get("id") for item in tiers if isinstance(item, dict)),
+        ]
+        return [
+            speed
+            for speed in SPEED_MODES
+            if speed == "standard"
+            or speed in values
+            or (speed == "fast" and "priority" in values)
+        ]
 
     @staticmethod
     def _failure_state(result):
@@ -209,10 +243,21 @@ class CLIRuntime:
             else "unverified"
         )
 
-    def generate(self, provider, model, system, prompt, max_tokens, *, cancelled=None):
+    def generate(
+        self,
+        provider,
+        model,
+        system,
+        prompt,
+        max_tokens,
+        *,
+        cancelled=None,
+        speed="standard",
+    ):
         """Run one native CLI text turn and require a complete, bounded result."""
         info = self._provider(provider)
         model = model_name(model)
+        self.validate_speed(provider, model, speed)
         if (
             not isinstance(max_tokens, int)
             or isinstance(max_tokens, bool)
@@ -233,7 +278,7 @@ class CLIRuntime:
             + json.dumps({"instructions": system, "task": prompt}, ensure_ascii=False)
         )
         with tempfile.TemporaryDirectory(prefix="orchestration-cli-turn-") as directory:
-            args, stdin = self._command(provider, binary, model, text)
+            args, stdin = self._command(provider, binary, model, text, speed=speed)
             result = self.runner(args, stdin, directory, self.timeout, cancelled)
         if result.returncode != 0:
             state = self._failure_state(result)
@@ -258,11 +303,27 @@ class CLIRuntime:
             output["response_id"] = None
         return output
 
+    def validate_speed(self, provider, model, speed):
+        """Reject unknown or unadvertised speed choices before starting a CLI turn."""
+        self._provider(provider)
+        if not isinstance(speed, str) or speed not in SPEED_MODES:
+            raise ValueError("Choose Standard, Fast, or Ultrafast speed")
+        if speed == "standard":
+            return
+        if provider != "openai":
+            raise ValueError("This CLI supports Standard speed only")
+        modes = self.status(provider)["model_speed_modes"].get(model, ["standard"])
+        if speed not in modes:
+            raise ValueError("The selected CLI model does not advertise this speed")
+
     @staticmethod
-    def _command(provider, binary, model, prompt):
+    def _command(provider, binary, model, prompt, *, speed="standard"):
         """Construct fixed argv and stdin; no shell or model-supplied commands."""
         model_args = [] if model == "default" else ["--model", model]
         if provider == "openai":
+            if speed not in SPEED_MODES:
+                raise ValueError("Choose Standard, Fast, or Ultrafast speed")
+            tier = "default" if speed == "standard" else speed
             args = [
                 binary,
                 "exec",
@@ -283,6 +344,8 @@ class CLIRuntime:
                 "project_doc_max_bytes=0",
                 "-c",
                 "mcp_servers={}",
+                "-c",
+                f'service_tier="{tier}"',
             ]
             for feature in (
                 "shell_tool",

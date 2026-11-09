@@ -27,6 +27,7 @@ export function editableAgents(agents) {
       : agent.responsibilities,
     capabilities: [...agent.capabilities],
     execution_mode: agent.execution_mode || "api",
+    execution_speed: agent.execution_speed || "standard",
     collaborators: [...(agent.collaborators || [])],
     reports_to: byId.get(agent.reports_to) || agent.reports_to || "",
     max_concurrency: String(agent.max_concurrency),
@@ -70,8 +71,20 @@ export function mountOrganizationEditor({
       ),
     ) + 1;
   const locked = new Set(lockedKeys);
-  if (!localTools)
-    agents = agents.map((agent) => ({ ...agent, execution_mode: "api" }));
+  agents = agents.map((agent) => {
+    if (!localTools)
+      return { ...agent, execution_mode: "api", execution_speed: "standard" };
+    if (!agent.provider)
+      return { ...agent, execution_mode: "cli", execution_speed: "standard" };
+    return agent;
+  });
+  agents.forEach((agent) => {
+    const cli = modelProviders.find((item) => item.id === agent.provider)?.cli;
+    if (
+      agent.execution_mode !== "cli" ||
+      Array.isArray(cli?.model_speed_modes?.[agent.model])
+    ) normalizeSpeed(agent);
+  });
 
   /** Publish an immutable draft snapshot without committing it to the backend. */
   function publish() {
@@ -173,6 +186,33 @@ export function mountOrganizationEditor({
       ignoreClick = false;
     }, 0);
   }
+  /** Return only speed modes advertised for the current CLI and selected model. */
+  function speedModes(agent) {
+    if (agent.execution_mode !== "cli") return ["standard"];
+    const cli = modelProviders.find((item) => item.id === agent.provider)?.cli;
+    const advertised = cli?.model_speed_modes?.[agent.model] || cli?.speed_modes;
+    const supported = Array.isArray(advertised) ? advertised : [];
+    return [...new Set(["standard", ...supported])].filter((mode) =>
+      ["standard", "fast", "ultrafast"].includes(mode),
+    );
+  }
+  /** Reset an unavailable speed after a provider, model, or execution change. */
+  function normalizeSpeed(agent) {
+    if (speedModes(agent).includes(agent.execution_speed)) return false;
+    agent.execution_speed = "standard";
+    return true;
+  }
+  /** Show supported CLI speed choices without inventing options for other providers. */
+  function speedField(agent) {
+    const modes = speedModes(agent);
+    const saved = agent.execution_speed;
+    const unverified =
+      ["fast", "ultrafast"].includes(saved) && !modes.includes(saved);
+    if (unverified) modes.push(saved);
+    if (modes.length < 2) return "";
+    const labels = { standard: "Standard", fast: "Fast", ultrafast: "Ultrafast" };
+    return `<label class="field"><span>Execution speed</span><select data-agent-speed aria-label="Execution speed">${modes.map((mode) => `<option value="${mode}" ${saved === mode ? "selected" : ""}>${labels[mode]}${unverified && saved === mode ? " (saved; verify connection)" : ""}</option>`).join("")}</select><small>${unverified ? "The saved speed is retained until model availability can be verified." : "Requested service tier; actual response time depends on the provider."}</small></label>`;
+  }
   /** Show each agent's provider/model assignment and reciprocal peer links. */
   function modelAndPeers(agent) {
     const provider = modelProviders.find((item) => item.id === agent.provider);
@@ -196,7 +236,7 @@ export function mountOrganizationEditor({
       )
       .join(
         "",
-      )}</select></label>${agent.provider ? `<label class="field"><span>Model</span><select data-agent-model aria-label="Model"><option value="">Choose a model</option>${models.map((model) => `<option value="${e(model)}" ${agent.model === model ? "selected" : ""}>${model === "default" ? "CLI default model" : e(model)}</option>`).join("")}</select><small>${connection?.configured ? mode === "cli" ? "Uses this CLI's saved sign-in and selected model." : "Models loaded from the provider's API." : "Connect this provider in Model connections, then reopen the team editor."}</small></label>` : ""}<fieldset class="collaborator-picker"><legend>Works with</legend>${agents
+      )}</select></label>${agent.provider ? `<label class="field"><span>Model</span><select data-agent-model aria-label="Model"><option value="">Choose a model</option>${models.map((model) => `<option value="${e(model)}" ${agent.model === model ? "selected" : ""}>${model === "default" ? "CLI default model" : e(model)}</option>`).join("")}</select><small>${connection?.configured ? mode === "cli" ? "Uses this CLI's saved sign-in and selected model." : "Models loaded from the provider's API." : "Connect this provider in Model connections, then reopen the team editor."}</small></label>${speedField(agent)}` : ""}<fieldset class="collaborator-picker"><legend>Works with</legend>${agents
       .filter((peer) => peer.key !== agent.key)
       .map(
         (peer) =>
@@ -378,8 +418,11 @@ export function mountOrganizationEditor({
         agent.execution_mode = event.target.value;
         agent.model =
           agent.provider && agent.execution_mode === "cli" ? "default" : "";
+        const resetSpeed = normalizeSpeed(agent);
         publish();
         render();
+        if (resetSpeed)
+          error("Execution speed reset to Standard for this execution method.");
         return;
       }
       if (event.target.matches("[data-agent-provider]")) {
@@ -390,13 +433,28 @@ export function mountOrganizationEditor({
           (cap) => cap !== "model.generate",
         );
         if (agent.provider) agent.capabilities.unshift("model.generate");
+        const resetSpeed = normalizeSpeed(agent);
         publish();
         render();
+        if (resetSpeed)
+          error("Execution speed reset to Standard for this provider.");
         return;
       }
       if (event.target.matches("[data-agent-model]")) {
         agent.model = event.target.value;
+        const resetSpeed = normalizeSpeed(agent);
         publish();
+        render();
+        if (resetSpeed)
+          error("Execution speed reset to Standard for this model.");
+        return;
+      }
+      if (event.target.matches("[data-agent-speed]")) {
+        const speed = event.target.value;
+        if (speedModes(agent).includes(speed) || speed === agent.execution_speed)
+          agent.execution_speed = speed;
+        publish();
+        render();
         return;
       }
       if (event.target.matches("[data-collaborator]")) {

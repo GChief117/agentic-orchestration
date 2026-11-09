@@ -238,6 +238,7 @@ def imported_definition(candidate):
                 "capabilities": caps,
                 "reports_to": None if index == 0 else "coordinator",
                 "max_concurrency": 1,
+                "execution_mode": "cli",
             }
             for index, (key, name, role, instructions, caps) in enumerate(roles)
         ],

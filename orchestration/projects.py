@@ -42,6 +42,7 @@ class AgentDefinition:
     model: str | None
     collaborators: list[str]
     execution_mode: str
+    execution_speed: str
 
 
 @dataclass(frozen=True)
@@ -112,6 +113,11 @@ def parse_project(document, connection):
         execution_mode = item.get("execution_mode", "api")
         if execution_mode not in ("api", "cli"):
             raise ValueError("Choose local CLI or API execution")
+        execution_speed = item.get("execution_speed", "standard")
+        if execution_speed not in ("standard", "fast", "ultrafast"):
+            raise ValueError("Choose standard, fast, or ultrafast execution")
+        if execution_mode != "cli" and execution_speed != "standard":
+            raise ValueError("Execution speed choices require local CLI execution")
         collaborators = text_list(item.get("collaborators", []), "Collaborators")
         if len(set(collaborators)) != len(collaborators) or key in collaborators:
             raise ValueError("Collaborators must be distinct other agents")
@@ -133,6 +139,7 @@ def parse_project(document, connection):
                 model,
                 collaborators,
                 execution_mode,
+                execution_speed,
             )
         )
     by_key = {agent.key: agent for agent in agents}

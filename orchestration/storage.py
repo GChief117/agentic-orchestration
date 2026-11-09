@@ -87,6 +87,7 @@ class Store:
             "model": "TEXT",
             "collaborators": "TEXT NOT NULL DEFAULT '[]'",
             "execution_mode": "TEXT NOT NULL DEFAULT 'api'",
+            "execution_speed": "TEXT NOT NULL DEFAULT 'standard'",
         }.items():
             if name not in agent_columns:
                 self.db.execute(f"ALTER TABLE agents ADD COLUMN {name} {declaration}")
@@ -117,7 +118,7 @@ class Store:
         )
         for agent in definition.agents:
             self.db.execute(
-                "INSERT INTO agents (id,project_id,key,name,role,instructions,responsibilities,capabilities,reports_to,max_concurrency,provider,model,collaborators,execution_mode) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO agents (id,project_id,key,name,role,instructions,responsibilities,capabilities,reports_to,max_concurrency,provider,model,collaborators,execution_mode,execution_speed) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     agent_ids[agent.key],
                     project_id,
@@ -133,6 +134,7 @@ class Store:
                     agent.model,
                     json.dumps(agent.collaborators),
                     agent.execution_mode,
+                    agent.execution_speed,
                 ),
             )
         self.event(
@@ -168,13 +170,13 @@ class Store:
         for agent in definition.agents:
             self.db.execute(
                 """INSERT INTO agents
-                (id,project_id,key,name,role,instructions,responsibilities,capabilities,reports_to,max_concurrency,provider,model,collaborators,execution_mode)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+                (id,project_id,key,name,role,instructions,responsibilities,capabilities,reports_to,max_concurrency,provider,model,collaborators,execution_mode,execution_speed)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
                 name=excluded.name,role=excluded.role,instructions=excluded.instructions,
                 responsibilities=excluded.responsibilities,capabilities=excluded.capabilities,
                 reports_to=excluded.reports_to,max_concurrency=excluded.max_concurrency,
                 provider=excluded.provider,model=excluded.model,collaborators=excluded.collaborators,
-                execution_mode=excluded.execution_mode""",
+                execution_mode=excluded.execution_mode,execution_speed=excluded.execution_speed""",
                 (
                     identifiers[agent.key],
                     project_id,
@@ -190,6 +192,7 @@ class Store:
                     agent.model,
                     json.dumps(agent.collaborators),
                     agent.execution_mode,
+                    agent.execution_speed,
                 ),
             )
         for key, agent in existing.items():

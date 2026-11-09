@@ -1,6 +1,6 @@
 # Model execution
 
-Each agent stores an `execution_mode` (`cli` or `api`), provider, and model.
+Each agent stores an `execution_mode` (`cli` or `api`), `execution_speed`, provider, and model.
 Existing records migrate to `api`; new local teams can select `cli`. The API
 runtime in `orchestration/models.py` uses HTTPS and the Python standard library.
 The local runtime in `orchestration/cli_models.py` invokes installed Codex CLI,
@@ -24,6 +24,16 @@ Transient check failures show an unverified state. A provider can still expire
 or revoke a saved session, and signing out from the CLI also signs it out for
 this app. Model metadata is cached outside the polling requests so ordinary
 workspace snapshots do not start CLI processes.
+
+Codex models advertise supported speed tiers in their native model metadata.
+The inspector offers Standard, Fast, and Ultrafast only when supported by the
+selected model. Standard sends `service_tier="default"`; accelerated choices
+send `"fast"` or `"ultrafast"` per invocation. This is a requested service tier,
+not a reasoning-effort setting or a latency guarantee. Unsupported combinations
+fail before task dispatch. The agent's selection persists across restarts and is
+recorded in execution receipts. The native default model offers Standard until
+a model with explicit tier support is selected. See the
+[Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
 
 A `model.generate` task requires a prompt, a project-relative output path, and
 an output token value of 1–8192 (default 2048). APIs enforce that token limit;
