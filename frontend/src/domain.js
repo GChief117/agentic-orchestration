@@ -105,6 +105,30 @@ function lines(value) {
     .filter(Boolean);
 }
 
+/** Validate and copy a shared model default without including unrelated agent fields. */
+function teamModelPayload(value) {
+  if (value == null) return value;
+  const executionMode = value.execution_mode || "api";
+  const executionSpeed = value.execution_speed || "standard";
+  if (!["cli", "api"].includes(executionMode))
+    throw new Error("Choose Local CLI or API for the team model.");
+  if (!["openai", "claude", "gemini"].includes(value.provider))
+    throw new Error("Choose a provider for the team model.");
+  const model = required(value.model, "Team model");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/.test(model))
+    throw new Error("Choose a valid team model.");
+  if (!["standard", "fast", "ultrafast"].includes(executionSpeed))
+    throw new Error("Choose a supported team execution speed.");
+  if (executionMode === "api" && executionSpeed !== "standard")
+    throw new Error("Accelerated team speeds require Local CLI execution.");
+  return {
+    execution_mode: executionMode,
+    provider: value.provider,
+    model,
+    execution_speed: executionSpeed,
+  };
+}
+
 /**
  * Build a project document from editable form values.
  * Validate required fields, roster keys, reporting cycles, and team capacity.
@@ -181,6 +205,9 @@ export function projectPayload(draft) {
     team_size: agents.length,
     max_concurrency: maxConcurrency,
     agents,
+    ...(draft.team_model !== undefined
+      ? { team_model: teamModelPayload(draft.team_model) }
+      : {}),
   };
 }
 

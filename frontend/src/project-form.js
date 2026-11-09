@@ -46,6 +46,7 @@ export function openProjectForm(document, onSubmit, modelProviders = []) {
       const team = organizationEditor.snapshot();
       draft.agents = team.agents;
       draft.max_concurrency = team.max_concurrency;
+      draft.team_model = team.team_model;
     }
   }
 
@@ -130,12 +131,15 @@ export function openProjectForm(document, onSubmit, modelProviders = []) {
     if (step === 1) {
       organizationEditor = mountOrganizationEditor({
         modelProviders,
+        teamModel: draft.team_model,
+        saveLabel: "Create project",
         root: content.querySelector("[data-organization-editor]"),
         agents: draft.agents,
         maxConcurrency: draft.max_concurrency,
         onChange(team) {
           draft.agents = team.agents;
           draft.max_concurrency = team.max_concurrency;
+          draft.team_model = team.team_model;
         },
       });
     }

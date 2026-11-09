@@ -52,6 +52,36 @@ class ProjectDefinition:
     charter: dict
     agents: list[AgentDefinition]
     max_concurrency: int
+    team_model: dict | None
+
+
+def parse_team_model(value):
+    """Validate a persistent shared model preference without storing credentials."""
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) - {
+        "provider",
+        "model",
+        "execution_mode",
+        "execution_speed",
+    }:
+        raise ValueError("Team model must contain only provider and execution settings")
+    provider = value.get("provider")
+    if not isinstance(provider, str) or provider not in PROVIDERS:
+        raise ValueError("Choose a provider for the team model")
+    model = model_name(value.get("model"))
+    mode = value.get("execution_mode", "cli")
+    speed = value.get("execution_speed", "standard")
+    if mode not in ("cli", "api") or speed not in ("standard", "fast", "ultrafast"):
+        raise ValueError("Choose valid team model execution settings")
+    if mode != "cli" and speed != "standard":
+        raise ValueError("Team speed choices require local CLI execution")
+    return {
+        "provider": provider,
+        "model": model,
+        "execution_mode": mode,
+        "execution_speed": speed,
+    }
 
 
 def parse_project(document, connection):
@@ -164,4 +194,11 @@ def parse_project(document, connection):
     )
     if concurrency > sum(agent.max_concurrency for agent in agents):
         raise ValueError("Project concurrency exceeds the team's configured capacity")
-    return ProjectDefinition(name, document["mode"], charter, agents, concurrency)
+    return ProjectDefinition(
+        name,
+        document["mode"],
+        charter,
+        agents,
+        concurrency,
+        parse_team_model(document.get("team_model")),
+    )

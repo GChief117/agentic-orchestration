@@ -41,6 +41,7 @@ def organization_context(project, agents):
             "name": project["name"],
             "charter": project["charter"],
             "max_concurrency": project["max_concurrency"],
+            "team_model": project.get("team_model"),
         },
         "agents": team,
         "reporting_edges": [

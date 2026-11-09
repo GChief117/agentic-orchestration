@@ -19,6 +19,10 @@ tasks before dispatch.
 The team editor can apply one model configuration to every agent; individual
 agents can then be changed separately. Applying a model preserves roles,
 instructions, reporting lines, peer links, and agent identities.
+The shared `team_model` is stored separately on the project when the organization
+is saved, so it remains selected even when individual agents use different
+models. New roles inherit that saved default. Applying to the entire team changes
+the current agent assignments; saving the shared choice alone preserves overrides.
 
 Goal creation begins with the desired outcome and optional selected source
 files. `POST /api/projects/{id}/plan` sends the saved organization chart to a

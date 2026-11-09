@@ -82,6 +82,11 @@ class Store:
         agent_columns = {
             row["name"] for row in self.db.execute("PRAGMA table_info(agents)")
         }
+        project_columns = {
+            row["name"] for row in self.db.execute("PRAGMA table_info(projects)")
+        }
+        if "team_model" not in project_columns:
+            self.db.execute("ALTER TABLE projects ADD COLUMN team_model TEXT")
         for name, declaration in {
             "provider": "TEXT",
             "model": "TEXT",
@@ -106,7 +111,7 @@ class Store:
         project_id = uuid.uuid4().hex
         agent_ids = {agent.key: uuid.uuid4().hex for agent in definition.agents}
         self.db.execute(
-            "INSERT INTO projects VALUES(?,?,?,?,?,?)",
+            "INSERT INTO projects (id,name,mode,charter,max_concurrency,created,team_model) VALUES(?,?,?,?,?,?,?)",
             (
                 project_id,
                 definition.name,
@@ -114,6 +119,7 @@ class Store:
                 json.dumps(definition.charter),
                 definition.max_concurrency,
                 time.time(),
+                json.dumps(definition.team_model) if definition.team_model else None,
             ),
         )
         for agent in definition.agents:
@@ -199,8 +205,12 @@ class Store:
             if key not in desired:
                 self.db.execute("DELETE FROM agents WHERE id=?", (agent["id"],))
         self.db.execute(
-            "UPDATE projects SET max_concurrency=? WHERE id=?",
-            (definition.max_concurrency, project_id),
+            "UPDATE projects SET max_concurrency=?,team_model=? WHERE id=?",
+            (
+                definition.max_concurrency,
+                json.dumps(definition.team_model) if definition.team_model else None,
+                project_id,
+            ),
         )
         self.event(None, f"Team updated: {definition.name}")
 
@@ -280,6 +290,7 @@ class Store:
             "resources",
             "receipt",
             "charter",
+            "team_model",
             "source_markers",
             "responsibilities",
             "capabilities",

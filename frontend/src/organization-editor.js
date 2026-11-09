@@ -46,6 +46,8 @@ export function mountOrganizationEditor({
   lockedKeys = [],
   selectedKey = null,
   modelProviders = [],
+  teamModel: savedTeamModel = null,
+  saveLabel = "Save organization",
 }) {
   const document = root.ownerDocument;
   const localTools = modelProviders.some((provider) => provider.cli);
@@ -87,7 +89,11 @@ export function mountOrganizationEditor({
       Array.isArray(cli?.model_speed_modes?.[agent.model])
     ) normalizeSpeed(agent);
   });
-  let appliedTeamModel = commonTeamModel();
+  const persistedTeamModel = savedTeamModel ? modelSettings(savedTeamModel) : null;
+  const initialTeamModel = persistedTeamModel && !localTools
+    ? { ...persistedTeamModel, execution_mode: "api", execution_speed: "standard" }
+    : persistedTeamModel;
+  let appliedTeamModel = initialTeamModel || commonTeamModel();
   let teamModel = { ...(appliedTeamModel || suggestedTeamModel()) };
 
   /** Publish an immutable draft snapshot without committing it to the backend. */
@@ -103,6 +109,7 @@ export function mountOrganizationEditor({
         collaborators: [...(agent.collaborators || [])],
       })),
       max_concurrency: concurrency,
+      team_model: teamModel.provider && teamModel.model ? modelSettings(teamModel) : null,
     };
   }
   /** Show actionable validation feedback beside the chart. */
@@ -188,7 +195,7 @@ export function mountOrganizationEditor({
     }));
     publish();
     render();
-    error(`Applied the shared model to all ${agents.length} agents. Individual overrides remain available below.`);
+    error(`Applied the shared model to all ${agents.length} agents. Choose ${saveLabel} to keep these changes.`);
   }
   /** Connect a pair reciprocally; collaboration never changes either manager. */
   function connectPair(first, second) {
@@ -323,10 +330,16 @@ export function mountOrganizationEditor({
   /** Show the shared model draft and whether the saved agent settings currently agree. */
   function teamModelSection() {
     const common = commonTeamModel();
-    const status = common
+    const assignments = common
       ? `All ${agents.length} agents currently share one model.`
       : "Mixed or unassigned models. Individual agent settings are preserved until you apply a team choice.";
-    return `<section class="agent-editor" aria-label="Shared team model"><div class="form-section-heading"><div><h3>Team model</h3><p>Choose one model for the whole chart, then adjust any agent individually.</p></div><button class="button primary" type="button" data-chart-action="apply-team-model">Apply to entire team</button></div><div class="form-grid">${modelControls(teamModel, "team")}</div><p class="muted" data-team-model-status role="status">${status}</p></section>`;
+    const saved = persistedTeamModel && Object.keys(persistedTeamModel).every(
+      (key) => persistedTeamModel[key] === teamModel[key],
+    );
+    const persistence = saved
+      ? "Saved team default."
+      : `Choose ${saveLabel} to save this team default.`;
+    return `<section class="agent-editor" aria-label="Shared team model"><div class="form-section-heading"><div><h3>Team model</h3><p>Choose one default for the team. Apply it to change all agents, or keep individual overrides. ${e(saveLabel)} saves these changes.</p></div><button class="button primary" type="button" data-chart-action="apply-team-model">Apply to entire team</button></div><div class="form-grid">${modelControls(teamModel, "team")}</div><p class="muted" data-team-model-status role="status">${e(persistence)} ${assignments}</p></section>`;
   }
   /** Show each agent's provider/model assignment and reciprocal peer links. */
   function modelAndPeers(agent) {
@@ -515,6 +528,7 @@ export function mountOrganizationEditor({
         teamModel.execution_mode = event.target.value;
         teamModel.model = teamModel.provider && teamModel.execution_mode === "cli" ? "default" : "";
         normalizeSpeed(teamModel);
+        publish();
         render();
         return;
       }
@@ -522,18 +536,21 @@ export function mountOrganizationEditor({
         teamModel.provider = event.target.value;
         teamModel.model = teamModel.provider && teamModel.execution_mode === "cli" ? "default" : "";
         normalizeSpeed(teamModel);
+        publish();
         render();
         return;
       }
       if (event.target.matches("[data-team-model]")) {
         teamModel.model = event.target.value;
         normalizeSpeed(teamModel);
+        publish();
         render();
         return;
       }
       if (event.target.matches("[data-team-speed]")) {
         teamModel.execution_speed = event.target.value;
         normalizeSpeed(teamModel);
+        publish();
         render();
         return;
       }

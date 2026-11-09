@@ -28,6 +28,7 @@ export function openTeamForm(
     root: content.querySelector("[data-team-editor]"),
     agents: view.agents,
     maxConcurrency: view.project.max_concurrency,
+    teamModel: view.project.team_model,
     lockedKeys,
     selectedKey,
   });
@@ -45,12 +46,14 @@ export function openTeamForm(
         success_criteria: view.project.charter.success_criteria.join("\n"),
         agents: team.agents,
         max_concurrency: team.max_concurrency,
+        team_model: team.team_model,
       });
       controller.busy(true);
       await onSubmit({
         agents: project.agents,
         team_size: project.team_size,
         max_concurrency: project.max_concurrency,
+        team_model: project.team_model,
       });
       dialog.close();
     } catch (error) {

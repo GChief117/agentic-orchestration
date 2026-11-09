@@ -176,6 +176,7 @@ class Engine:
                     "agents": document.get("agents"),
                     "team_size": document.get("team_size"),
                     "max_concurrency": document.get("max_concurrency"),
+                    "team_model": document.get("team_model", project.get("team_model")),
                 },
                 self.connection,
             )
