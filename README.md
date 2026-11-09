@@ -8,6 +8,18 @@ This repository develops a shared vocabulary, practical patterns, and testable c
 
 **Status: experimental backend and draft design v0.1.** This is not an official standard, production-ready service, or claim of consensus. Existing research and frameworks already address parts of this problem; our contribution is a coherent, falsifiable starting point for multi-task coordination. The design is independent of any provider, organization, private bridge installation, or framework. Research citations identify sources and do not imply affiliation or endorsement.
 
+## Screenshots
+
+Sample projects shown in the **Warm minimal** theme.
+
+**Workspace overview** — project workspaces, assigned agents, and execution progress.
+
+![Workspace overview with three sample projects, agent counts, and verified task progress](docs/images/workspace-overview.png)
+
+**Editable agent organization** — roles, reporting lines, peer connections, and per-agent model selection.
+
+![Editable organization chart with a selected agent's local CLI, Gemini model, and collaboration settings](docs/images/agent-organization.png)
+
 ## Run the backend
 
 Python 3.10+ on macOS or Linux; no third-party runtime dependencies.
