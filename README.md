@@ -51,7 +51,7 @@ Discovery routes use the same local session authorization as other APIs: `GET /a
 
 ## Model execution and collaboration
 
-1. Open **Model connections**, enter a provider API key, and connect. Available models are loaded from that provider. API usage may incur provider charges.
+1. Open **Model connections → API keys**, enter a provider API key, and connect. Available models are loaded from that provider. API usage may incur provider charges.
 2. Open a project's team editor. Select an agent, choose **Model provider** and **Model**, and connect peers by dragging a card’s **+ handle** onto another agent. Alternatively choose **Connect agents** and click two cards, or use **Works with** in the inspector.
 3. Add a goal with **Run model task** steps. Set each prompt, output artifact path, and maximum output tokens. Add dependencies wherever one step must wait for another.
 
@@ -59,7 +59,7 @@ The scheduler enforces task order, project/agent capacity, and file conflicts. M
 
 Results are saved as project-scoped text artifacts with provider, model, usage, and response metadata. A completed model response is not a guarantee of factual correctness; assign a reviewer for content review. The model cannot directly execute shell commands or change project source files through this action. No provider fallback or automatic retry is performed.
 
-API keys entered in the UI remain in server memory and are cleared on restart. Alternatively configure `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY` in the server environment; those reload on restart. Never commit credentials. Disconnect removes the running process's key. Local CLI subscription sign-in remains available from **Manage local CLI sign-in**, but those sessions are separate from API execution.
+API keys entered in the UI remain in server memory and are cleared on restart. Alternatively configure `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY` in the server environment; those reload on restart. Never commit credentials. Disconnect removes the running process's key. In a local workspace, **Model connections** opens on **Local CLI**, with **API keys** in the second tab. Local CLI subscription sessions are separate from API execution. Hosted workspaces show API connections only.
 
 See [model execution](docs/model-execution.md) for limits and provider references.
 

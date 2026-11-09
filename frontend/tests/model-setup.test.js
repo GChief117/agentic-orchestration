@@ -86,6 +86,65 @@ test("API connection form clears keys and never stores them in the browser", asy
   }
 });
 
+test("connections start on local CLI, ignore stale API loads, and clear keys when switching", async () => {
+  const dom = new JSDOM("<body></body>");
+  try {
+    let modelCalls = 0;
+    let finishFirstLoad;
+    const result = {
+      providers: [{ id: "openai", name: "OpenAI", configured: false, models: [] }],
+    };
+    const api = {
+      async providers() {
+        return { providers: [] };
+      },
+      models() {
+        modelCalls += 1;
+        if (modelCalls === 1)
+          return new Promise((resolve) => {
+            finishFirstLoad = resolve;
+          });
+        return Promise.resolve(result);
+      },
+    };
+    const dialog = openModelConnections(dom.window.document, api);
+    await tick();
+    const tabs = [...dialog.querySelectorAll('[role="tab"]')];
+    assert.deepEqual(tabs.map((tab) => tab.textContent), ["Local CLI", "API keys"]);
+    assert.equal(tabs[0].getAttribute("aria-selected"), "true");
+    assert.equal(modelCalls, 0);
+    assert.ok(dialog.querySelector("[data-providers]"));
+    tabs[1].click();
+    tabs[0].click();
+    finishFirstLoad(result);
+    await tick();
+    assert.ok(dialog.querySelector("[data-providers]"));
+    assert.equal(dialog.querySelector("[data-api-key]"), null);
+    tabs[0].dispatchEvent(
+      new dom.window.KeyboardEvent("keydown", {
+        key: "ArrowRight", bubbles: true,
+      }),
+    );
+    await tick();
+    assert.equal(tabs[1].getAttribute("aria-selected"), "true");
+    assert.equal(dom.window.document.activeElement, tabs[1]);
+    const key = dialog.querySelector("[data-api-key]");
+    key.value = "unsubmitted-private-key";
+    tabs[1].dispatchEvent(
+      new dom.window.KeyboardEvent("keydown", {
+        key: "ArrowLeft", bubbles: true,
+      }),
+    );
+    await tick();
+    assert.equal(key.value, "");
+    assert.equal(dom.window.document.activeElement, tabs[0]);
+    assert.equal(dom.window.document.querySelectorAll("dialog").length, 1);
+    dialog.close();
+  } finally {
+    dom.window.close();
+  }
+});
+
 test("model task form submits prompt, output path, and token budget", async () => {
   const dom = new JSDOM("<body></body>");
   try {

@@ -6,10 +6,12 @@ The configured provider and model belong to each persistent agent record.
 Credentials do not belong to agent records: they remain in process memory or the
 server environment and are never included in state snapshots or project files.
 
-The separate **Local CLI sign-in** dialog opens Codex CLI, Claude Code, or
-Antigravity CLI (`agy`) for Gemini. Their account credentials remain with each
-tool. Signing in to a CLI does not supply an API key to the text-generation
-runtime, and Antigravity login status is shown as unverified.
+In a local workspace, **Model connections** opens on the **Local CLI** tab, with
+**API keys** second. The CLI tab opens Codex CLI, Claude Code, or Antigravity CLI
+(`agy`) for Gemini. Their account credentials remain with each tool. Signing in
+to a CLI does not supply an API key to the text-generation runtime, and
+Antigravity login status is shown as unverified. Hosted workspaces show only
+API connections.
 
 A `model.generate` task requires a prompt, a project-relative output path, and
 an output limit of 1–8192 tokens (default 2048). The API call uses the selected

@@ -16,7 +16,12 @@ export function openProviderForm(document, api) {
     "Your accounts",
   );
   const { dialog } = controller;
-  const content = dialog.querySelector("[data-content]");
+  mountProviderPanel(dialog.querySelector("[data-content]"), controller, api);
+  return dialog;
+}
+
+/** Mount local sign-in controls inside an existing dialog or connection tab. */
+export function mountProviderPanel(content, controller, api) {
   content.innerHTML = `<div class="dialog-body"><p>Choose the account you want to use. Sign-in opens the provider’s official tool in Terminal, where you complete its browser sign-in.</p><div class="notice">These accounts belong to your local CLI tools. Model tasks in this app use separate API-key connections.</div><div data-providers aria-live="polite">Checking installed tools…</div><p data-provider-message role="status"></p><div class="notice danger hidden" data-error role="alert"></div></div><footer class="dialog-footer"><span>Credentials stay with the provider’s tool.</span><button class="button" data-refresh-providers>Refresh status</button></footer>`;
   const list = content.querySelector("[data-providers]");
 
@@ -37,9 +42,9 @@ export function openProviderForm(document, api) {
     content.querySelector("[data-error]").classList.add("hidden");
     try {
       const result = await api.providers();
-      if (dialog.isConnected) render(result.providers);
+      if (content.isConnected) render(result.providers);
     } catch (error) {
-      if (dialog.isConnected) showError(dialog, error);
+      if (content.isConnected) showError(content, error);
     } finally {
       controller.busy(false);
     }
@@ -56,16 +61,15 @@ export function openProviderForm(document, api) {
     content.querySelector("[data-error]").classList.add("hidden");
     try {
       const result = await api.signInProvider(button.dataset.provider);
-      if (dialog.isConnected)
+      if (content.isConnected)
         content.querySelector("[data-provider-message]").textContent =
           result.message;
     } catch (error) {
-      if (dialog.isConnected) showError(dialog, error);
+      if (content.isConnected) showError(content, error);
     } finally {
       controller.busy(false);
     }
   }
   content.addEventListener("click", click);
-  refresh();
-  return dialog;
+  return refresh();
 }

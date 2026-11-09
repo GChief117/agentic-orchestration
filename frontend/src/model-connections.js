@@ -1,8 +1,10 @@
 import { mountDialog, showError } from "./form-controls.js";
 import { escapeHtml as e } from "./domain.js";
-import { openProviderForm } from "./provider-form.js";
+import { mountProviderPanel } from "./provider-form.js";
 
-/** Connect portable provider APIs without saving credentials in browser storage. */
+let connectionDialogId = 0;
+
+/** Open local CLI connections first, with API keys available in a second tab. */
 export function openModelConnections(
   document,
   api,
@@ -16,11 +18,73 @@ export function openModelConnections(
   );
   const { dialog } = controller;
   const content = dialog.querySelector("[data-content]");
-  let child = null;
-  content.innerHTML = `<div class="dialog-body"><p>Connect an API key for the providers your agents will use. Model tasks use the provider and model assigned to each agent.</p><div class="notice">API usage can incur provider charges. Keys entered here stay in server memory until restart; they are not saved in project files, browser storage, or GitHub. CLI subscription sign-in is separate from API access.</div><div data-model-providers>Loading connections…</div><div class="notice danger hidden" data-error role="alert"></div>${localTools ? '<button class="text-button" data-local-cli>Manage local CLI sign-in</button>' : ""}</div>`;
-  dialog.addEventListener("close", () => {
-    if (child?.isConnected) child.close();
+  const panelId = `connection-panel-${++connectionDialogId}`;
+  content.innerHTML = `${localTools ? `<nav class="tabs connection-tabs" role="tablist" aria-label="Connection type"><button type="button" id="${panelId}-cli" data-connection-mode="cli" role="tab" aria-controls="${panelId}">Local CLI</button><button type="button" id="${panelId}-api" data-connection-mode="api" role="tab" aria-controls="${panelId}">API keys</button></nav>` : ""}<section id="${panelId}" data-connection-panel${localTools ? ' role="tabpanel"' : ""}></section>`;
+  const panel = content.querySelector("[data-connection-panel]");
+  let selectedMode;
+
+  /** Clear unsubmitted secrets before replacing a panel or closing the dialog. */
+  function clearKeys() {
+    for (const field of panel.querySelectorAll("[data-api-key]")) field.value = "";
+  }
+
+  /** Mount only the selected connection type and discard stale panel responses. */
+  function selectMode(mode) {
+    if (controller.pending || mode === selectedMode) return;
+    if (mode !== "api" && (mode !== "cli" || !localTools)) return;
+    clearKeys();
+    selectedMode = mode;
+    for (const tab of content.querySelectorAll("[data-connection-mode]")) {
+      const selected = tab.dataset.connectionMode === mode;
+      tab.classList.toggle("selected", selected);
+      tab.setAttribute("aria-selected", String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      if (selected) panel.setAttribute("aria-labelledby", tab.id);
+    }
+    const root = document.createElement("div");
+    panel.replaceChildren(root);
+    if (mode === "cli") return mountProviderPanel(root, controller, api);
+    return mountApiPanel(root, controller, api, onChange);
+  }
+
+  content.addEventListener("click", (event) => {
+    const tab = event.target.closest("[data-connection-mode]");
+    if (tab) selectMode(tab.dataset.connectionMode);
   });
+  content.addEventListener("keydown", (event) => {
+    const tab = event.target.closest("[data-connection-mode]");
+    if (!tab || controller.pending) return;
+    const alternate = selectedMode === "cli" ? "api" : "cli";
+    const mode = {
+      ArrowLeft: alternate,
+      ArrowRight: alternate,
+      Home: "cli",
+      End: "api",
+    }[event.key];
+    if (!mode) return;
+    event.preventDefault();
+    const previousFocus = document.activeElement;
+    const ready = selectMode(mode);
+    Promise.resolve(ready).then(() => {
+      if (
+        dialog.isConnected &&
+        selectedMode === mode &&
+        [previousFocus, document.body].includes(document.activeElement)
+      ) {
+        content.querySelector(`[data-connection-mode="${mode}"]`).focus();
+      }
+    });
+  });
+  dialog.addEventListener("close", () => {
+    clearKeys();
+  });
+  selectMode(localTools ? "cli" : "api");
+  return dialog;
+}
+
+/** Connect provider APIs without saving credentials in browser storage. */
+function mountApiPanel(content, controller, api, onChange) {
+  content.innerHTML = `<div class="dialog-body"><p>Connect an API key for the providers your agents will use. Model tasks use the provider and model assigned to each agent.</p><div class="notice">API usage can incur provider charges. Keys entered here stay in server memory until restart; they are not saved in project files, browser storage, or GitHub. CLI subscription sign-in is separate from API access.</div><div data-model-providers>Loading connections…</div><div class="notice danger hidden" data-error role="alert"></div></div>`;
 
   /** Render readiness and an empty password field for each provider. */
   function render(providers) {
@@ -41,10 +105,10 @@ export function openModelConnections(
       const result = disconnect
         ? await api.disconnectModel(provider)
         : await api.connectModel(provider, key);
-      if (dialog.isConnected) render(result.providers);
+      if (content.isConnected) render(result.providers);
       await onChange();
     } catch (error) {
-      if (dialog.isConnected) showError(dialog, error);
+      if (content.isConnected) showError(content, error);
     } finally {
       for (const field of content.querySelectorAll("[data-api-key]"))
         field.value = "";
@@ -61,10 +125,6 @@ export function openModelConnections(
       );
   });
   content.addEventListener("click", (event) => {
-    if (event.target.closest("[data-local-cli]")) {
-      child = openProviderForm(document, api);
-      return;
-    }
     const form = event.target.closest("[data-model-provider]");
     if (!form) return;
     if (event.target.closest("[data-refresh-models]"))
@@ -72,13 +132,12 @@ export function openModelConnections(
     if (event.target.closest("[data-disconnect]"))
       mutate(form.dataset.modelProvider, undefined, true);
   });
-  api
+  return api
     .models()
     .then((result) => {
-      if (dialog.isConnected) render(result.providers);
+      if (content.isConnected) render(result.providers);
     })
     .catch((error) => {
-      if (dialog.isConnected) showError(dialog, error);
+      if (content.isConnected) showError(content, error);
     });
-  return dialog;
 }
