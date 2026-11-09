@@ -1,0 +1,2 @@
+# Styled PDF export. Core orchestration and HTML/Markdown exports use the stdlib.
+reportlab==5.0.0

@@ -57,7 +57,7 @@ test("goal description and selected sources produce a review before tasks can st
     source.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
     submit(dialog, dom);
     await tick();
-    assert.deepEqual(planned, [{ goal: "Summarize this project’s technology", coordinator: "lead", source_files: ["README.md"] }]);
+    assert.deepEqual(planned, [{ goal: "Summarize this project’s technology", coordinator: "lead", source_files: ["README.md"], deliverable: { format: "pdf", style: "editorial" } }]);
     assert.equal(started.length, 0);
     assert.equal(dialog.querySelectorAll("[data-task]").length, 2);
     assert.match(dialog.textContent, /Inspect the selected source/);

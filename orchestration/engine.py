@@ -1,7 +1,10 @@
 """Coordinate durable state, scheduling policy, and execution adapters."""
 
+import hashlib
 import json
+import os
 from pathlib import Path
+import tempfile
 import threading
 import time
 
@@ -20,6 +23,15 @@ from .sources import list_source_files
 from .discovery import ProjectDiscovery, imported_definition
 from .context import ProjectContext
 from .source_bridges import SourceBridges
+from .delivery import (
+    DELIVERY_EXTENSIONS,
+    DELIVERY_MIME_TYPES,
+    MAX_DELIVERY_BYTES,
+    MAX_DELIVERY_SOURCE_BYTES,
+    final_artifact_tasks,
+    parse_deliverable,
+    require_renderer,
+)
 
 
 class Engine:
@@ -32,6 +44,7 @@ class Engine:
         executor=None,
         allow_source_access=True,
         allow_cli=True,
+        deliverable_renderer=None,
     ):
         """Build the local runtime with explicitly supplied global execution capacity.
 
@@ -75,6 +88,8 @@ class Engine:
         self.threads = {}
         self.scheduler = None
         self.closed = False
+        self.deliverable_renderer = deliverable_renderer
+        self.delivering = {}
 
     def _require_open(self):
         """Raise RuntimeError when mutation is attempted during or after shutdown."""
@@ -275,17 +290,37 @@ class Engine:
         return project_id
 
     def plan_goal(
-        self, project_id, goal, coordinator=None, source_files=None, *, allow_cli=True
+        self,
+        project_id,
+        goal,
+        coordinator=None,
+        source_files=None,
+        *,
+        allow_cli=True,
+        deliverable=None,
     ):
         """Ask a configured chart agent for a reviewable task plan without starting it."""
         with self.lock:
             self._require_open()
         return propose_goal(
-            self, project_id, goal, coordinator, source_files, allow_cli=allow_cli
+            self,
+            project_id,
+            goal,
+            coordinator,
+            source_files,
+            allow_cli=allow_cli,
+            deliverable=deliverable,
         )
 
     def submit(
-        self, project_id, title, tasks, *, allow_cli=True, expected_team_revision=None
+        self,
+        project_id,
+        title,
+        tasks,
+        *,
+        allow_cli=True,
+        expected_team_revision=None,
+        deliverable=None,
     ):
         """Validate and atomically queue a goal in an existing project.
 
@@ -296,6 +331,8 @@ class Engine:
             raise ValueError("An explicit project ID is required")
         if not isinstance(title, str) or not 1 <= len(title.strip()) <= 120:
             raise ValueError("Title must contain 1–120 characters")
+        presentation = parse_deliverable(deliverable)
+        require_renderer(presentation)
         with self.lock:
             self._require_open()
             project = self.store.project(project_id)
@@ -347,7 +384,11 @@ class Engine:
                         )
             with self.store.db:
                 goal_id = self.store.create_goal(
-                    project_id, title.strip(), definitions, "local-workspace"
+                    project_id,
+                    title.strip(),
+                    definitions,
+                    "local-workspace",
+                    presentation if deliverable is not None else None,
                 )
         return goal_id
 
@@ -373,12 +414,15 @@ class Engine:
                 return
             for signal in self.active.values():
                 signal.set()
-            worker_threads = list(self.threads.values())
+            worker_threads = list(
+                set(self.threads.values()) | set(self.delivering.values())
+            )
         if self.scheduler:
             self.scheduler.join()
         # Release the lock while workers persist final receipts and outcomes.
         for thread in worker_threads:
-            thread.join()
+            if thread is not threading.current_thread():
+                thread.join()
         with self.lock:
             self.store.close()
             self.closed = True
@@ -432,11 +476,7 @@ class Engine:
                     task,
                     context={
                         "project": projects[task["project_id"]],
-                        "goal": dict(
-                            self.store.db.execute(
-                                "SELECT * FROM goals WHERE id=?", (task["goal_id"],)
-                            ).fetchone()
-                        ),
+                        "goal": self.store.goal(task["goal_id"]),
                         "shared_context": self.context.read(task["project_id"]),
                         "agent": agents[task["agent_id"]],
                         "team": [
@@ -521,7 +561,154 @@ class Engine:
             self.store.commit()
             self.active.pop(task["id"], None)
             self.live_activity.pop(task["id"], None)
-            self.threads.pop(task["id"], None)
+        try:
+            if not self.stopping.is_set():
+                self.export_goal(task["goal_id"], automatic=True)
+        finally:
+            with self.lock:
+                self.threads.pop(task["id"], None)
+
+    def export_goal(self, goal_id, deliverable=None, *, automatic=False):
+        """Render finished source artifacts into the requested format outside the lock.
+
+        The source receipts stay unchanged. Export failures are durable and visible,
+        so an available Markdown artifact cannot be mistaken for a delivered PDF.
+        """
+        with self.lock:
+            if automatic and (self.closed or self.stopping.is_set()):
+                return None
+            self._require_open()
+            goal = self.store.goal(goal_id)
+            tasks = [task for task in self.store.tasks() if task["goal_id"] == goal_id]
+            if automatic and (not goal.get("deliverable") or goal.get("delivery")):
+                return goal.get("delivery")
+            if not tasks or any(task["state"] != "accepted" for task in tasks):
+                if automatic:
+                    return None
+                raise ValueError(
+                    "Finish all goal tasks before exporting the deliverable"
+                )
+            if goal_id in self.delivering:
+                if automatic:
+                    return goal.get("delivery")
+                raise ValueError("This goal's deliverable is already being prepared")
+            settings = parse_deliverable(
+                deliverable if deliverable is not None else goal.get("deliverable")
+            )
+            delivery = {**settings, "state": "rendering"}
+            self.store.db.execute(
+                "UPDATE goals SET deliverable=?,delivery=? WHERE id=?",
+                (json.dumps(settings), json.dumps(delivery), goal_id),
+            )
+            self.store.commit()
+            self.delivering[goal_id] = threading.current_thread()
+        try:
+            require_renderer(settings)
+            finals = final_artifact_tasks(tasks)
+            if not finals:
+                raise ValueError(
+                    "No saved text artifact is available to turn into a deliverable"
+                )
+            parts, source_tasks, total = [], [], 0
+            for source in finals:
+                receipt = source["receipt"]
+                path = self.connection.path(receipt["artifact"])
+                if path.stat().st_size > 65536:
+                    raise ValueError("A source artifact exceeds its size limit")
+                with path.open("rb") as stream:
+                    data = stream.read(65537)
+                if len(data) > 65536:
+                    raise ValueError("A source artifact exceeds its size limit")
+                if hashlib.sha256(data).hexdigest() != receipt.get("sha256"):
+                    raise ValueError(
+                        "A source artifact changed after its execution receipt"
+                    )
+                total += len(data)
+                if total > MAX_DELIVERY_SOURCE_BYTES:
+                    raise ValueError(
+                        "Final artifacts exceed the combined presentation limit"
+                    )
+                text = data.decode("utf-8")
+                parts.append(
+                    text if len(finals) == 1 else f"## {source['title']}\n\n{text}"
+                )
+                source_tasks.append(source["id"])
+            if self.deliverable_renderer is None:
+                from .reports import render_deliverable
+
+                renderer = render_deliverable
+            else:
+                renderer = self.deliverable_renderer
+            result = renderer(
+                "\n\n".join(parts), goal["title"], settings["format"], settings["style"]
+            )
+            if (
+                not isinstance(result, bytes)
+                or not result
+                or len(result) > MAX_DELIVERY_BYTES
+            ):
+                raise ValueError(
+                    "The rendered deliverable is empty or exceeds its size limit"
+                )
+            if settings["format"] == "pdf" and not result.startswith(b"%PDF-"):
+                raise ValueError("The renderer did not return a valid PDF document")
+            extension = DELIVERY_EXTENSIONS[settings["format"]]
+            relative = f"deliverables/{goal_id}/report.{extension}"
+            path = self.connection.project_path(goal["project_id"], relative)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            descriptor, temporary = tempfile.mkstemp(
+                dir=path.parent, prefix=".pending-"
+            )
+            try:
+                with os.fdopen(descriptor, "wb") as stream:
+                    stream.write(result)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temporary, path)
+            finally:
+                if os.path.exists(temporary):
+                    os.unlink(temporary)
+            delivery = {
+                **settings,
+                "state": "ready",
+                "name": f"report.{extension}",
+                "artifact": str(path.relative_to(self.connection.workspace)),
+                "bytes": len(result),
+                "sha256": hashlib.sha256(result).hexdigest(),
+                "source_task_ids": source_tasks,
+                "created": time.time(),
+            }
+        except Exception as exc:
+            delivery = {**settings, "state": "failed", "error": str(exc)[:1000]}
+        finally:
+            with self.lock:
+                self.store.db.execute(
+                    "UPDATE goals SET delivery=? WHERE id=?",
+                    (json.dumps(delivery), goal_id),
+                )
+                self.store.commit()
+                self.delivering.pop(goal_id, None)
+        return delivery
+
+    def read_deliverable(self, goal_id):
+        """Read one verified binary deliverable through its goal, never an arbitrary path."""
+        with self.lock:
+            goal = self.store.goal(goal_id)
+            delivery = goal.get("delivery") or {}
+        if delivery.get("state") != "ready":
+            raise ValueError("This goal does not have a ready deliverable")
+        path = self.connection.path(delivery["artifact"])
+        if path.stat().st_size > MAX_DELIVERY_BYTES:
+            raise ValueError("Deliverable exceeds its size limit")
+        with path.open("rb") as stream:
+            data = stream.read(MAX_DELIVERY_BYTES + 1)
+        if len(data) > MAX_DELIVERY_BYTES:
+            raise ValueError("Deliverable exceeds its size limit")
+        if hashlib.sha256(data).hexdigest() != delivery["sha256"]:
+            raise ValueError(
+                "The deliverable changed after generation; export it again"
+            )
+        return data, delivery["name"], DELIVERY_MIME_TYPES[delivery["format"]]
 
     def snapshot(self):
         """Return durable records with derived team size, agent activity, and capacity.
@@ -541,6 +728,7 @@ class Engine:
                 total=len(members),
                 state=goal_state(task["state"] for task in members),
             )
+            goal["deliverable"] = parse_deliverable(goal.get("deliverable"))
         for task in snapshot["tasks"]:
             task["activity"] = activity.get(task["id"])
         for agent in snapshot["agents"]:

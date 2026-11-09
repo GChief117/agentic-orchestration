@@ -11,6 +11,20 @@ export const ACTIONS = {
   },
 };
 
+/** Supported final delivery formats; working task outputs remain editable text. */
+export const DELIVERABLE_FORMATS = {
+  pdf: "Designed PDF",
+  html: "Web report (HTML)",
+  markdown: "Editable Markdown",
+};
+
+/** Color and typography presets used by the document renderer. */
+export const DELIVERABLE_STYLES = {
+  editorial: "Warm editorial",
+  ocean: "Ocean blue",
+  neon: "Neon blue",
+};
+
 /**
  * Display labels and fixed CSS tones for backend task and goal states.
  */

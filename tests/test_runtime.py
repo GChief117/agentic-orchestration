@@ -370,6 +370,7 @@ class HTTPTests(unittest.TestCase):
             "goal": "Review the project",
             "coordinator": "coordinator",
             "source_files": [],
+            "deliverable": {"format": "html", "style": "ocean"},
         }
         with patch.object(self.engine, "plan_goal", return_value=draft) as planner:
             with self.assertRaises(HTTPError) as error:
@@ -386,7 +387,12 @@ class HTTPTests(unittest.TestCase):
             ) as result:
                 self.assertEqual(json.load(result), draft)
             planner.assert_called_once_with(
-                self.project_id, "Review the project", "coordinator", [], allow_cli=True
+                self.project_id,
+                "Review the project",
+                "coordinator",
+                [],
+                allow_cli=True,
+                deliverable={"format": "html", "style": "ocean"},
             )
         self.assertEqual(self.engine.snapshot()["tasks"], [])
 

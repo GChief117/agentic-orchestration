@@ -38,9 +38,10 @@ The same sample workspace in the other six palettes. **Warm minimal** is shown a
 
 ## Run the backend
 
-Python 3.10+ on macOS or Linux; no third-party runtime dependencies.
+Python 3.10+ on macOS or Linux. Install the declared PDF renderer to create styled reports; core orchestration and HTML/Markdown exports use the standard library.
 
 ```sh
+python3 -m pip install -r requirements.txt
 python3 -m orchestration examples/backend_goal.json --project examples/greenfield_project.json --execution-limit 4 --data-dir .runtime/example
 python3 app.py --port 8765 --execution-limit 4
 ```
@@ -49,7 +50,7 @@ The first command runs an explicit task graph and prints its result. The second 
 
 ## Portable packaging
 
-A clean checkout runs with Python's standard library; no local Node modules,
+A clean checkout runs its core with Python's standard library; styled PDF export uses the declared ReportLab dependency. No local Node modules,
 provider binaries, credentials, or workspace data are included. The Dockerfile
 bundles the runtime for another machine, and hosted mode disables local-computer
 integrations. See [portable runtime and deployment](docs/deployment.md) for
@@ -96,6 +97,10 @@ Results are saved as project-scoped text artifacts with execution method, provid
 Open **Shared context** on the project overview to save notes, decisions, and evidence for the whole team. Notes persist in the private data directory and accompany plans and task execution. Context changes wait until active project work finishes. Plans include a context revision so a changed bucket requires replanning. A coordinator must report missing essential context before proposing executable tasks, rather than substitute an investigation plan for a requested assessment.
 
 Finished goals show their final outputs under **Results to review**, with **Open result** and **Download** actions. Supporting outputs remain available. “Execution finished” means the tasks returned their outputs; it does not certify that the requested objective was achieved.
+
+New goals let you choose **Designed PDF**, **Web report**, or **Markdown**, with Editorial, Ocean, and Neon report styles. The app generates the selected deliverable after execution; existing goals can be exported again without rerunning their agents. PDFs include a title page, styled tables, and vector flowcharts. Diagram source must use supported Mermaid flowchart syntax; generation errors are shown and can be retried. Source text remains available separately from the finished download.
+
+Use **Collapse** on a goal, or **Collapse all**, to reduce the goal list. Status, task counts, and a ready deliverable remain accessible in the collapsed header. The browser remembers your choice across refreshes.
 
 For existing SSH/CLI connections, see [read-only source bridges](docs/source-bridges.md). Connection settings, shared notes, and generated results stay outside the repository in the private data directory.
 

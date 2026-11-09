@@ -1,5 +1,7 @@
 import {
   ACTIONS,
+  DELIVERABLE_FORMATS,
+  DELIVERABLE_STYLES,
   escapeHtml as e,
   goalPayload,
   starterTasks,
@@ -48,6 +50,7 @@ export function openGoalForm(
   let planSummary = "";
   let planTiming = null;
   let teamRevision = null;
+  let deliverable = { format: "pdf", style: "editorial" };
   const goalSources = { source_files: [], source_filter: "" };
   /**
    * Create a task draft with a stable local ID and the first available agent/action.
@@ -77,6 +80,19 @@ export function openGoalForm(
     goal = value(content, "goal");
     title = value(content, "goal-title");
     coordinator = value(content, "coordinator");
+    captureDeliverable();
+  }
+  /** Retain output choices across planning, review, and task-editor rerenders. */
+  function captureDeliverable() {
+    const format = value(content, "deliverable-format");
+    const style = value(content, "deliverable-style");
+    if (Object.hasOwn(DELIVERABLE_FORMATS, format)) deliverable.format = format;
+    if (Object.hasOwn(DELIVERABLE_STYLES, style)) deliverable.style = style;
+  }
+  /** Ask for the actual final file and its visual treatment before starting work. */
+  function deliverableFields() {
+    const options = (items, selected) => Object.entries(items).map(([key, label]) => `<option value="${key}" ${key === selected ? "selected" : ""}>${label}</option>`).join("");
+    return `<section class="deliverable-preferences"><h3>Final deliverable</h3><div class="form-grid"><label class="field"><span>Desired deliverable</span><select data-field="deliverable-format" aria-label="Desired deliverable">${options(DELIVERABLE_FORMATS, deliverable.format)}</select></label><label class="field"><span>Visual style</span><select data-field="deliverable-style" aria-label="Visual style">${options(DELIVERABLE_STYLES, deliverable.style)}</select></label></div><p class="muted">The team will prepare your final report in this format. Source text remains available for editing.</p></section>`;
   }
   /** Use the first line as a concise title when the owner leaves it optional. */
   function suggestedTitle() {
@@ -133,6 +149,7 @@ export function openGoalForm(
         goal: goal.trim(),
         coordinator,
         source_files: [...goalSources.source_files],
+        deliverable: { ...deliverable },
       });
       tasks = planDrafts(plan);
       nextId = Math.max(
@@ -142,6 +159,7 @@ export function openGoalForm(
       planSummary = typeof plan.summary === "string" ? plan.summary : "";
       planTiming = plan.timing || null;
       teamRevision = plan.team_revision;
+      if (plan.deliverable && Object.hasOwn(DELIVERABLE_FORMATS, plan.deliverable.format) && Object.hasOwn(DELIVERABLE_STYLES, plan.deliverable.style)) deliverable = { ...plan.deliverable };
       if (plan.coordinator_key) coordinator = plan.coordinator_key;
       title = title.trim() || suggestedTitle();
       stage = "tasks";
@@ -161,7 +179,7 @@ export function openGoalForm(
   }
   /** Start with the outcome and chart, leaving task details for the review step. */
   function renderGoal() {
-    content.innerHTML = `<form data-goal-intake><div class="dialog-body"><p>Describe the outcome you want. Your coordinator will propose tasks for the team in your organization chart. You review the plan before any task starts.</p>${input("What should your team accomplish?", "goal", goal, { required: true, textarea: true, rows: 6, hint: "Include the result you want and anything the team should consider." })}${input("Goal title (optional)", "goal-title", title)}<label class="field"><span>Planning coordinator</span><select data-field="coordinator" aria-label="Planning coordinator">${planners.map((agent) => `<option value="${e(agent.key)}" ${agent.key === coordinator ? "selected" : ""}>${e(agent.name)} · ${e(agent.role)}</option>`).join("")}</select></label>${!planners.length ? '<div class="notice info">Assign a provider and model to at least one team member in the organization chart before planning.</div>' : ""}<section data-goal-sources>${sourcePicker(goalSources, true)}</section><div class="notice danger hidden" data-error role="alert"></div></div><footer class="dialog-footer"><button class="text-button" type="button" data-manual-goal>Define tasks manually</button><button class="button primary" type="submit" data-label="Plan with coordinator" ${planners.length ? "" : "disabled"}>Plan with coordinator</button></footer></form>`;
+    content.innerHTML = `<form data-goal-intake><div class="dialog-body"><p>Describe the outcome you want. Your coordinator will propose tasks for the team in your organization chart. You review the plan before any task starts.</p>${input("What should your team accomplish?", "goal", goal, { required: true, textarea: true, rows: 6, hint: "Include the result you want and anything the team should consider." })}${input("Goal title (optional)", "goal-title", title)}${deliverableFields()}<label class="field"><span>Planning coordinator</span><select data-field="coordinator" aria-label="Planning coordinator">${planners.map((agent) => `<option value="${e(agent.key)}" ${agent.key === coordinator ? "selected" : ""}>${e(agent.name)} · ${e(agent.role)}</option>`).join("")}</select></label>${!planners.length ? '<div class="notice info">Assign a provider and model to at least one team member in the organization chart before planning.</div>' : ""}<section data-goal-sources>${sourcePicker(goalSources, true)}</section><div class="notice danger hidden" data-error role="alert"></div></div><footer class="dialog-footer"><button class="text-button" type="button" data-manual-goal>Define tasks manually</button><button class="button primary" type="submit" data-label="Plan with coordinator" ${planners.length ? "" : "disabled"}>Plan with coordinator</button></footer></form>`;
     content.querySelector("form").onsubmit = requestPlan;
     content.querySelector("[data-manual-goal]").onclick = () => {
       captureGoal();
@@ -191,6 +209,7 @@ export function openGoalForm(
    */
   function read() {
     title = value(content, "goal-title");
+    captureDeliverable();
     return [...content.querySelectorAll("[data-task]")].map((row) => {
       const task = {
         id: row.dataset.task,
@@ -278,7 +297,7 @@ export function openGoalForm(
    */
   function render() {
     if (stage === "goal") return renderGoal();
-    content.innerHTML = `<form data-goal-form><div class="dialog-body">${planSummary ? `<div class="notice info"><strong>Coordinator’s plan</strong><p>${e(planSummary)}</p><span>Review and adjust the tasks below before starting the goal.</span></div>` : '<div class="notice info">Define the tasks your team should run. Each task follows its dependencies and the settings saved for its assigned agent.</div>'}${renderGoalTiming(planTiming, { preview: true })}${input("Goal title", "goal-title", title, { required: true })}<div class="form-section-heading"><h3>Tasks & dependencies</h3><button class="text-button" type="button" data-example>Use release example</button></div>${tasks
+    content.innerHTML = `<form data-goal-form><div class="dialog-body">${planSummary ? `<div class="notice info"><strong>Coordinator’s plan</strong><p>${e(planSummary)}</p><span>Review and adjust the tasks below before starting the goal.</span></div>` : '<div class="notice info">Define the tasks your team should run. Each task follows its dependencies and the settings saved for its assigned agent.</div>'}${renderGoalTiming(planTiming, { preview: true })}${input("Goal title", "goal-title", title, { required: true })}${deliverableFields()}<div class="form-section-heading"><h3>Tasks & dependencies</h3><button class="text-button" type="button" data-example>Use release example</button></div>${tasks
       .map((task, index) => {
         const agent =
           view.agents.find((item) => item.key === task.agent) || view.agents[0];
@@ -348,6 +367,7 @@ export function openGoalForm(
       try {
         tasks = read();
         const payload = goalPayload(view.project.id, title, tasks, view.agents);
+        payload.deliverable = { ...deliverable };
         if (teamRevision != null) payload.team_revision = teamRevision;
         controller.busy(true);
         await onSubmit(payload);
@@ -441,6 +461,21 @@ function downloadArtifact(document, artifact, fallbackName) {
 export async function downloadTaskArtifact(document, task, api) {
   const artifact = await api.artifact(task.id);
   downloadArtifact(document, artifact, task.receipt?.artifact);
+}
+
+/** Download a rendered document and release its temporary browser URL afterward. */
+export async function downloadGoalDeliverable(document, goal, api) {
+  const result = await api.downloadDeliverable(goal.id);
+  const view = document.defaultView;
+  const url = view.URL.createObjectURL(result.blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = resultFilename(result.name || goal.delivery?.name || "report");
+  document.body.append(link);
+  try { link.click(); } finally {
+    link.remove();
+    view.setTimeout(() => view.URL.revokeObjectURL(url), 0);
+  }
 }
 
 /**

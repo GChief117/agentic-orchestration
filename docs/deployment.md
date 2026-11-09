@@ -1,17 +1,15 @@
 # Portable runtime
 
-The runtime needs Python 3.10+ with its standard library. It does not require npm,
-Node.js, pip-installed packages, a local model provider CLI, or any of the author's
-computer paths. Node and jsdom are used only for frontend development tests.
-The container bundles Python and copies only runtime source.
+The runtime needs Python 3.10+. Core execution and HTML/Markdown exports use the standard library. Styled PDF exports use ReportLab, pinned in `requirements.txt`. The container installs this dependency; no machine-specific packages, Node modules, provider credentials, or author's computer paths are bundled. Node and jsdom are used only for frontend development tests.
 
 ## Run locally from a clean checkout
 
 ```sh
-python3 -S app.py --execution-limit 4
+python3 -m pip install -r requirements.txt
+python3 app.py --execution-limit 4
 ```
 
-The `-S` flag disables third-party site packages. Local mode binds to loopback and
+Without PDF export, `python3 -S app.py --execution-limit 4` still runs the core with site packages disabled. Local mode binds to loopback and
 retains local project discovery and optional official provider CLI sign-in.
 Provider CLIs are independently installed optional integrations, not bundled app
 dependencies. Credentials stay with those tools.

@@ -1,5 +1,62 @@
 /* Project charter, team cards, task rows, status badges, and activity views. */
 
+/* Final report preferences and compact, independently collapsible goal cards. */
+.deliverable-preferences {
+  padding: 20px;
+  margin: 22px 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--theme-soft, #f1f5ef);
+}
+.deliverable-preferences h3 { margin: 0 0 16px; }
+.deliverable-preferences p { margin-bottom: 0; }
+.goal-list-controls {
+  display: flex;
+  justify-content: flex-end;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+.goal-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.goal-summary { min-width: 0; }
+.goal-summary h3 { overflow-wrap: anywhere; }
+.goal-summary > small { display: block; color: var(--muted); margin-top: 8px; }
+.goal-panel.is-collapsed > .panel-heading { border-bottom: 0; }
+.goal-panel [data-goal-body][hidden] { display: none; }
+.goal-delivery {
+  margin: 22px;
+  padding: 22px;
+  border: 1px solid var(--theme-accent, #88a787);
+  border-radius: 12px;
+  background: var(--theme-soft, #f1f5ef);
+}
+.delivery-heading { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.delivery-heading > div:first-child { margin-right: auto; }
+.delivery-heading h4 { font-size: 20px; margin: 6px 0; }
+.delivery-ready { font-weight: 600; overflow-wrap: anywhere; }
+.delivery-ready span { font-weight: 400; color: var(--muted); }
+.delivery-error { color: var(--danger, #a13e30); }
+.delivery-status { color: var(--muted); }
+.delivery-options {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 14px;
+  margin-top: 18px;
+}
+.delivery-options .field { margin: 0; }
+@media (max-width: 800px) {
+  .goal-panel > .panel-heading { align-items: flex-start; flex-wrap: wrap; }
+  .goal-heading-actions { justify-content: flex-start; }
+  .delivery-options { grid-template-columns: 1fr; }
+  .goal-delivery { margin: 16px; padding: 16px; }
+}
+
 .panel {
   background: var(--theme-surface, #fff);
   border: 1px solid var(--line);

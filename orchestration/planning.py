@@ -8,6 +8,7 @@ import uuid
 from .plans import parse_tasks
 from .projects import text
 from .estimates import estimate_plan
+from .delivery import parse_deliverable, require_renderer
 
 MAX_PLAN_BYTES = 65536
 MAX_PLAN_TASKS = 100
@@ -261,6 +262,7 @@ def propose_goal(
     source_files=None,
     *,
     allow_cli=True,
+    deliverable=None,
 ):
     """Ask one assigned coordinator for a reviewable plan without creating or running tasks.
 
@@ -269,6 +271,8 @@ def propose_goal(
     returned revision must be checked again when the user accepts the plan.
     """
     goal = text(goal_text, "Goal description", 16000)
+    presentation = parse_deliverable(deliverable)
+    require_renderer(presentation)
     if not isinstance(project_id, str):
         raise ValueError("An explicit project ID is required")
     paths = [] if source_files is None else source_files
@@ -314,6 +318,13 @@ def propose_goal(
     system = (
         "You are the selected coordinator planning work for this saved organization chart. "
         "Return only one JSON object with keys summary, readiness, and tasks. Do not execute work. "
+        "The selected deliverable describes the final presentation. Tasks should create a complete "
+        "Markdown source report that the application can present in that format. For PDF or HTML, "
+        "use clear headings, concise paragraphs, comparison tables, and useful Mermaid flowcharts "
+        "when the evidence supports them. Use Mermaid flowchart TD with named nodes and simple "
+        "--> or -.-> edges; sequence, class, pie, and other diagram types are unsupported. "
+        "Include a short executive summary and source references. "
+        "Do not merely rename a text file or claim to render a binary document yourself. "
         "First assess whether the user's requested outcome can actually be delivered "
         "using the supplied context and these text-only model tasks. Preserve that outcome: "
         "never replace a requested assessment with an investigation plan, a methodology, "
@@ -352,6 +363,7 @@ def propose_goal(
     prompt = json.dumps(
         {
             "goal": goal,
+            "deliverable": presentation,
             "selected_coordinator": lead["key"],
             "organization": context,
             "available_agent_keys": available,
@@ -438,6 +450,7 @@ def propose_goal(
     return {
         "summary": summary,
         "readiness": readiness,
+        "deliverable": presentation,
         "tasks": tasks,
         "coordinator_key": lead["key"],
         "team_revision": revision,

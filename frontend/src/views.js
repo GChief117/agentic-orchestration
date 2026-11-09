@@ -2,6 +2,8 @@ import { renderBrand } from "./branding.js";
 import { renderOrganizationChart } from "./organization.js";
 import {
   ACTIONS,
+  DELIVERABLE_FORMATS,
+  DELIVERABLE_STYLES,
   STATUSES,
   escapeHtml as e,
   metrics,
@@ -194,7 +196,21 @@ function goalResults(goal, tasks, agents) {
       : "";
   }
   const result = (task) => `<article class="goal-result"><div><strong>${e(task.title)}</strong><span class="result-filename">${e(task.receipt.artifact)}</span><small>${e(agents.get(task.agent_id)?.name || "Assigned agent")}</small></div><div class="result-actions"><button class="button" data-inspect="${e(task.id)}">Open result</button><button class="text-button" data-download-artifact="${e(task.id)}">Download</button></div></article>`;
-  return `<section class="goal-results" aria-label="Goal results"><h4>Results to review</h4><p>These files were saved by the team. Review their contents against the goal; successful execution alone does not confirm the objective was met.</p>${primary.map(result).join("")}${supporting.length ? `<details class="supporting-results" data-goal-results="${e(goal.id)}"><summary>Supporting results (${supporting.length})</summary>${supporting.map(result).join("")}</details>` : ""}</section>`;
+  return `<section class="goal-results" aria-label="Goal results"><h4>Results to review</h4><p>These are the editable source files behind your final deliverable. Review their contents against the goal; successful execution alone does not confirm the objective was met.</p>${primary.map(result).join("")}${supporting.length ? `<details class="supporting-results" data-goal-results="${e(goal.id)}"><summary>Supporting results (${supporting.length})</summary>${supporting.map(result).join("")}</details>` : ""}</section>`;
+}
+
+/** Make the requested final document prominent while retaining the working source text. */
+function goalDelivery(goal, draft, generating = false) {
+  const preferences = draft || goal.deliverable || { format: "pdf", style: "editorial" };
+  const delivery = goal.delivery;
+  const busy = generating || delivery?.state === "rendering";
+  const options = (items, selected) => Object.entries(items).map(([key, label]) => `<option value="${key}" ${key === selected ? "selected" : ""}>${label}</option>`).join("");
+  const status = delivery?.state === "ready"
+    ? `<p class="delivery-ready">${e(delivery.name || "Your report is ready")}${Number.isFinite(delivery.bytes) ? ` <span>· ${Math.max(1, Math.round(delivery.bytes / 1024))} KB</span>` : ""}</p><button class="button primary" data-download-goal="${e(goal.id)}">Download ${e(delivery.format === "markdown" ? "Markdown" : (delivery.format || "file").toUpperCase())}</button>`
+    : busy ? '<p class="delivery-status" role="status">Designing and preparing the final file…</p>'
+      : delivery?.state === "failed" ? `<p class="delivery-error" role="alert">${e(delivery.error || "The final file could not be prepared. Try again.")}</p>`
+        : `<p class="muted">${goal.state === "accepted" ? "Choose a format to turn the completed source into your final report." : "The final document will be prepared after the team completes its work."}</p>`;
+  return `<section class="goal-delivery" aria-label="Final deliverable"><div class="delivery-heading"><div><span class="eyebrow">Final deliverable</span><h4>${e(DELIVERABLE_FORMATS[preferences.format] || "Report")}</h4></div>${status}</div><div class="delivery-options"><label class="field"><span>Desired deliverable</span><select aria-label="Desired deliverable" data-delivery-format="${e(goal.id)}" ${busy ? "disabled" : ""}>${options(DELIVERABLE_FORMATS, preferences.format)}</select></label><label class="field"><span>Visual style</span><select aria-label="Visual style" data-delivery-style="${e(goal.id)}" ${busy ? "disabled" : ""}>${options(DELIVERABLE_STYLES, preferences.style)}</select></label><button class="button" data-generate-deliverable="${e(goal.id)}" ${busy || goal.state !== "accepted" ? "disabled" : ""}>${busy ? "Preparing…" : delivery?.state === "ready" ? "Generate another format" : delivery?.state === "failed" ? "Retry delivery" : "Prepare deliverable"}</button></div></section>`;
 }
 
 /**
@@ -233,14 +249,17 @@ function projectCards(snapshot) {
 /**
  * Render a project's goal/task rows with ownership, status, and cancellation controls.
  */
-function goalsView(view) {
+function goalsView(view, display = {}) {
   if (!view.goals.length)
     return `${empty("The team is ready for its first goal.", "Give this project a goal and assign each step to a team member.")}<div class="empty-action"><button class="button primary" data-action="new-goal">${icon("plus")} Add a goal</button></div>`;
   const agents = new Map(view.agents.map((agent) => [agent.id, agent]));
-  return view.goals
+  const controls = view.goals.length > 1 ? '<div class="goal-list-controls"><button class="text-button" data-collapse-goals="all">Collapse all</button><button class="text-button" data-expand-goals="all">Expand all</button></div>' : "";
+  return controls + view.goals
     .map((goal) => {
       const tasks = view.tasks.filter((task) => task.goal_id === goal.id);
-      return `<section class="panel goal-panel ${goal.state === "running" ? "is-running" : ""}"><header class="panel-heading"><div><span class="eyebrow">Goal</span><h3>${e(goal.title)}</h3></div>${badge(goal.state, goal.state === "accepted" ? "Execution finished" : null)}</header>${renderGoalTiming(goal.timing, { state: goal.state })}${goalResults(goal, tasks, agents)}${liveActivity(tasks, agents)}<div class="task-list">${tasks.map((task) => taskRow(task, agents)).join("")}</div><footer class="goal-footer"><span>${goal.accepted} of ${goal.total} tasks passed execution checks</span>${["queued", "running", "cancelling"].includes(goal.state) ? `<button class="text-button danger-text" data-cancel="${e(goal.id)}" ${goal.state === "cancelling" ? "disabled" : ""}>${goal.state === "cancelling" ? "Cancelling…" : "Cancel remaining work"}</button>` : "<span>Review saved results above</span>"}</footer></section>`;
+      const collapsed = display.collapsedGoals?.has(goal.id) || false;
+      const quickDownload = collapsed && goal.delivery?.state === "ready" ? `<button class="button" data-download-goal="${e(goal.id)}">Download ${e(goal.delivery.format === "markdown" ? "Markdown" : (goal.delivery.format || "file").toUpperCase())}</button>` : "";
+      return `<section class="panel goal-panel ${goal.state === "running" ? "is-running" : ""} ${collapsed ? "is-collapsed" : ""}" data-goal="${e(goal.id)}"><header class="panel-heading"><div class="goal-summary"><span class="eyebrow">Goal</span><h3>${e(goal.title)}</h3><small>${goal.accepted} of ${goal.total} tasks finished</small></div><div class="goal-heading-actions">${badge(goal.state, goal.state === "accepted" ? "Execution finished" : null)}${quickDownload}<button class="button goal-collapse-toggle" data-toggle-goal="${e(goal.id)}" aria-expanded="${!collapsed}" aria-controls="goal-body-${e(goal.id)}">${collapsed ? "Expand" : "Collapse"}</button></div></header><div id="goal-body-${e(goal.id)}" data-goal-body="${e(goal.id)}" ${collapsed ? "hidden" : ""}>${renderGoalTiming(goal.timing, { state: goal.state })}${goalDelivery(goal, display.deliveryDrafts?.get(goal.id), display.generatingGoals?.has(goal.id))}${goalResults(goal, tasks, agents)}${liveActivity(tasks, agents)}<div class="task-list">${tasks.map((task) => taskRow(task, agents)).join("")}</div><footer class="goal-footer"><span>${goal.accepted} of ${goal.total} tasks passed execution checks</span>${["queued", "running", "cancelling"].includes(goal.state) ? `<button class="text-button danger-text" data-cancel="${e(goal.id)}" ${goal.state === "cancelling" ? "disabled" : ""}>${goal.state === "cancelling" ? "Cancelling…" : "Cancel remaining work"}</button>` : "<span>Source text and supporting results remain available above</span>"}</footer></div></section>`;
     })
     .join("");
 }
@@ -274,9 +293,9 @@ function activityView(snapshot, view = null) {
 /**
  * Render the selected project charter, capacity summary, and goal overview.
  */
-function overviewView(snapshot, view) {
+function overviewView(snapshot, view, display = {}) {
   const p = view.project;
-  return `<div class="overview-grid"><section class="panel charter"><div class="panel-heading"><h2>Project charter</h2><span class="chip">${p.mode === "existing" ? "Imported" : "Greenfield"}</span></div><div class="charter-body">${p.has_source_bridge ? `<div class="notice"><strong>Connected source bridge</strong><p>Project sources are read through the configured bridge. Open Shared context to see its repositories.</p><small>The local output folder is separate from the connected source.</small></div>` : p.source_path ? `<div class="notice"><strong>Local source folder</strong><p>${e(p.source_path)}</p><small>Linked for reference. Tasks run in the isolated workspace.</small></div>` : ""}<span class="label">Objective</span><p class="objective">${e(p.charter.objective)}</p><div class="charter-columns"><div><span class="label">In scope</span>${bulletList(p.charter.scope)}</div><div><span class="label">Success criteria</span>${bulletList(p.charter.success_criteria)}</div></div>${p.charter.constraints.length ? `<span class="label">Constraints</span>${bulletList(p.charter.constraints)}` : ""}</div></section><section class="panel capacity-panel"><h2>Team & capacity</h2><p>Assigned agents and available execution slots are separate.</p><dl><div><dt>Assigned agents</dt><dd>${p.team_size}</dd></div><div><dt>Project concurrency</dt><dd>${p.max_concurrency}</dd></div><div><dt>Currently executing</dt><dd>${p.active_executions}</dd></div><div><dt>Workspace limit</dt><dd>${snapshot.capacity.execution_limit}</dd></div></dl><div class="small-note">Model tasks use each agent’s selected provider. Connect API access before starting model work.</div></section></div><section class="panel shared-context-panel"><div><h2>Shared context</h2><p>Save project notes, evidence, and decisions for the whole team. Saved context is included in new plans and agent tasks.</p></div><button class="button" data-action="shared-context">Open context</button></section><section class="panel organization-panel overview-organization"><div class="panel-heading"><h2>Team organization</h2><button class="text-button" data-action="edit-team">Edit organization ${icon("arrow")}</button></div>${renderOrganizationChart(view.agents, { interactive: true })}</section><div class="section-heading"><h2>Project goals</h2><button class="text-button" data-action="tab" data-tab="work">View all ${icon("arrow")}</button></div>${goalsView(view)}`;
+  return `<div class="overview-grid"><section class="panel charter"><div class="panel-heading"><h2>Project charter</h2><span class="chip">${p.mode === "existing" ? "Imported" : "Greenfield"}</span></div><div class="charter-body">${p.has_source_bridge ? `<div class="notice"><strong>Connected source bridge</strong><p>Project sources are read through the configured bridge. Open Shared context to see its repositories.</p><small>The local output folder is separate from the connected source.</small></div>` : p.source_path ? `<div class="notice"><strong>Local source folder</strong><p>${e(p.source_path)}</p><small>Linked for reference. Tasks run in the isolated workspace.</small></div>` : ""}<span class="label">Objective</span><p class="objective">${e(p.charter.objective)}</p><div class="charter-columns"><div><span class="label">In scope</span>${bulletList(p.charter.scope)}</div><div><span class="label">Success criteria</span>${bulletList(p.charter.success_criteria)}</div></div>${p.charter.constraints.length ? `<span class="label">Constraints</span>${bulletList(p.charter.constraints)}` : ""}</div></section><section class="panel capacity-panel"><h2>Team & capacity</h2><p>Assigned agents and available execution slots are separate.</p><dl><div><dt>Assigned agents</dt><dd>${p.team_size}</dd></div><div><dt>Project concurrency</dt><dd>${p.max_concurrency}</dd></div><div><dt>Currently executing</dt><dd>${p.active_executions}</dd></div><div><dt>Workspace limit</dt><dd>${snapshot.capacity.execution_limit}</dd></div></dl><div class="small-note">Model tasks use each agent’s selected provider. Connect API access before starting model work.</div></section></div><section class="panel shared-context-panel"><div><h2>Shared context</h2><p>Save project notes, evidence, and decisions for the whole team. Saved context is included in new plans and agent tasks.</p></div><button class="button" data-action="shared-context">Open context</button></section><section class="panel organization-panel overview-organization"><div class="panel-heading"><h2>Team organization</h2><button class="text-button" data-action="edit-team">Edit organization ${icon("arrow")}</button></div>${renderOrganizationChart(view.agents, { interactive: true })}</section><div class="section-heading"><h2>Project goals</h2><button class="text-button" data-action="tab" data-tab="work">View all ${icon("arrow")}</button></div>${goalsView(view, display)}`;
 }
 
 /**
@@ -293,9 +312,13 @@ export function renderWorkspace(
     tab = "overview",
     workspaceTab = "projects",
     brandStyle = "arrow",
+    collapsedGoals = new Set(),
+    deliveryDrafts = new Map(),
+    generatingGoals = new Set(),
   } = {},
 ) {
   const view = selectedProject && projectView(snapshot, selectedProject);
+  const display = { collapsedGoals, deliveryDrafts, generatingGoals };
   const heading = view
     ? view.project.name
     : workspaceTab === "activity"
@@ -320,6 +343,6 @@ export function renderWorkspace(
       )
       .join(
         "",
-      )}</nav>${tab === "team" ? teamView(view) : tab === "work" ? goalsView(view) : tab === "activity" ? activityView(snapshot, view) : overviewView(snapshot, view)}`;
+      )}</nav>${tab === "team" ? teamView(view) : tab === "work" ? goalsView(view, display) : tab === "activity" ? activityView(snapshot, view) : overviewView(snapshot, view, display)}`;
   return `<aside class="sidebar"><a class="brand" href="#" data-action="projects" data-brand aria-label="Orchestration home">${renderBrand(brandStyle)}</a><span class="nav-label">Workspace</span><nav><button class="nav-item ${!view && workspaceTab === "projects" ? "current" : ""}" data-action="projects">${icon("grid")} Projects <span>${snapshot.projects.length}</span></button><button class="nav-item ${!view && workspaceTab === "activity" ? "current" : ""}" data-action="activity">${icon("layers")} Activity</button><button class="nav-item" data-action="appearance">${icon("layers")} Appearance</button></nav><div class="nav-project-heading"><span class="nav-label">Your projects</span><button class="icon-button" data-action="new-project" aria-label="Create project">${icon("plus")}</button></div><nav class="project-nav">${snapshot.projects.map((project) => `<button class="nav-item ${view?.project.id === project.id ? "current" : ""}" data-project="${e(project.id)}"><span class="project-dot"></span><span class="truncate">${e(project.name)}</span></button>`).join("")}</nav><footer class="sidebar-footer"><span class="local-indicator"></span><div>${snapshot.features?.local_tools === false ? "Hosted workspace" : "Local workspace"}<small>Independent · experimental</small></div></footer></aside><div class="main-area"><header class="topbar"><span>Workspace <b>/</b> ${view ? "Project" : workspaceTab === "activity" ? "Activity" : "Overview"}</span><div class="topbar-actions">${snapshot.features?.local_tools === false ? "" : '<button class="button" data-action="import-projects">Import projects</button>'}<button class="button" data-action="providers">Model connections</button><span class="connection" id="connection-status" role="status">Connecting</span><button class="icon-button" data-action="refresh" aria-label="Refresh workspace">↻</button></div></header><main><div class="page-header"><div>${view ? `<button class="back-link" data-action="projects">← All projects</button>` : '<span class="eyebrow">A clearer way to coordinate</span>'}<h1>${e(heading)}</h1><p>${e(description)}</p></div><button class="button primary" data-action="${view ? "new-goal" : "new-project"}">${icon("plus")} ${view ? "New goal" : "New project"}</button></div><div id="workspace-error" class="notice danger hidden" role="alert"></div>${body}<footer class="page-footer"><span>Local operations · Results are backed by execution receipts</span><span id="last-updated"></span></footer></main></div>`;
 }

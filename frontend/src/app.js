@@ -4,7 +4,7 @@ import { openModelConnections } from "./model-connections.js";
 import { openContextForm } from "./context-form.js";
 import { openTeamForm } from "./team-form.js";
 import { projectView } from "./domain.js";
-import { openGoalForm, openProjectForm, openTaskDetails, downloadTaskArtifact } from "./forms.js";
+import { openGoalForm, openProjectForm, openTaskDetails, downloadTaskArtifact, downloadGoalDeliverable } from "./forms.js";
 import { renderWorkspace } from "./views.js";
 
 /**
@@ -25,7 +25,21 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
     stopped = false,
     dialog = null;
   const window = document.defaultView;
+  const collapsedGoals = new Set();
+  const deliveryDrafts = new Map();
+  const generatingGoals = new Set();
+  const collapseStorageKey = "orchestration.goal-collapse.v1";
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(collapseStorageKey) || "[]");
+    if (Array.isArray(saved)) saved.filter((id) => typeof id === "string").slice(0, 1000).forEach((id) => collapsedGoals.add(id));
+  } catch { /* In-memory collapse controls still work when storage is unavailable. */ }
   let notificationTimer;
+
+  /** Persist only presentation choices, never project context or credentials. */
+  function saveCollapsedGoals() {
+    try { window.localStorage.setItem(collapseStorageKey, JSON.stringify([...collapsedGoals])); }
+    catch { /* Restricted browsers retain choices for this session. */ }
+  }
 
   /**
    * Display a temporary accessible confirmation, replacing the prior timer.
@@ -60,7 +74,7 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
       : null;
     const focusKey =
       focused &&
-      ["project", "inspect", "cancel", "tab", "action"].find(
+      ["project", "inspect", "cancel", "tab", "action", "toggleGoal", "collapseGoals", "expandGoals", "downloadGoal", "generateDeliverable"].find(
         (key) => focused.dataset[key],
       );
     const focusValue = focusKey && focused.dataset[focusKey];
@@ -69,6 +83,9 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
       tab,
       workspaceTab,
       brandStyle: document.documentElement.dataset.brandStyle,
+      collapsedGoals,
+      deliveryDrafts,
+      generatingGoals,
     });
     for (const preview of root.querySelectorAll("details[data-activity-preview]"))
       preview.open = openPreviews.has(preview.dataset.activityPreview);
@@ -79,7 +96,7 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
     document.getElementById("last-updated").textContent =
       `Updated ${new Date().toLocaleTimeString()}`;
     if (focusKey)
-      [...root.querySelectorAll(`[data-${focusKey}]`)]
+      [...root.querySelectorAll(`[data-${focusKey.replace(/[A-Z]/g, (letter) => "-" + letter.toLowerCase())}]`)]
         .find((element) => element.dataset[focusKey] === focusValue)
         ?.focus({ preventScroll: true });
   }
@@ -215,12 +232,52 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
    */
   async function click(event) {
     const button = event.target.closest(
-      "[data-action], [data-project], [data-cancel], [data-inspect], [data-download-artifact], [data-org-agent]",
+      "[data-action], [data-project], [data-cancel], [data-inspect], [data-download-artifact], [data-org-agent], [data-toggle-goal], [data-collapse-goals], [data-expand-goals], [data-download-goal], [data-generate-deliverable]",
     );
     if (!button || !root.contains(button)) return;
     event.preventDefault();
     try {
-      if (button.dataset.orgAgent) {
+      if (button.dataset.toggleGoal) {
+        const id = button.dataset.toggleGoal;
+        if (collapsedGoals.has(id)) collapsedGoals.delete(id);
+        else collapsedGoals.add(id);
+        saveCollapsedGoals();
+        render();
+      } else if (button.dataset.collapseGoals || button.dataset.expandGoals) {
+        const view = projectView(snapshot, selectedProject);
+        for (const goal of view?.goals || []) {
+          if (button.dataset.collapseGoals) collapsedGoals.add(goal.id);
+          else collapsedGoals.delete(goal.id);
+        }
+        saveCollapsedGoals();
+        render();
+      } else if (button.dataset.downloadGoal) {
+        const goal = snapshot.goals.find((item) => item.id === button.dataset.downloadGoal);
+        if (goal) {
+          button.disabled = true;
+          try {
+            await downloadGoalDeliverable(document, goal, api);
+            notify("Deliverable download requested.");
+          } finally { if (button.isConnected) button.disabled = false; }
+        }
+      } else if (button.dataset.generateDeliverable) {
+        const id = button.dataset.generateDeliverable;
+        if (generatingGoals.has(id)) return;
+        const goal = snapshot.goals.find((item) => item.id === id);
+        if (!goal) return;
+        const preferences = deliveryDrafts.get(id) || goal.deliverable || { format: "pdf", style: "editorial" };
+        generatingGoals.add(id);
+        render();
+        try {
+          const result = await api.generateDeliverable(id, preferences);
+          await afterMutation();
+          if (result.delivery?.state === "failed") throw new Error(result.delivery.error || "The deliverable could not be prepared. Try again.");
+          notify(result.delivery?.state === "ready" ? "Your deliverable is ready to download." : "Your deliverable is being prepared.");
+        } finally {
+          generatingGoals.delete(id);
+          render();
+        }
+      } else if (button.dataset.orgAgent) {
         editTeam(button.dataset.orgAgent);
       } else if (button.dataset.project) {
         selectedProject = button.dataset.project;
@@ -293,8 +350,21 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
       editTeam(node.dataset.orgAgent);
     }
   }
+  /** Retain export choices across live polling without altering the saved goal yet. */
+  function change(event) {
+    const field = event.target.closest("[data-delivery-format], [data-delivery-style]");
+    if (!field || !root.contains(field)) return;
+    const id = field.dataset.deliveryFormat || field.dataset.deliveryStyle;
+    const goal = snapshot?.goals.find((item) => item.id === id);
+    if (!goal) return;
+    const preferences = { ...(deliveryDrafts.get(id) || goal.deliverable || { format: "pdf", style: "editorial" }) };
+    if (field.dataset.deliveryFormat) preferences.format = field.value;
+    else preferences.style = field.value;
+    deliveryDrafts.set(id, preferences);
+  }
   root.addEventListener("click", click);
   root.addEventListener("keydown", chartKey);
+  root.addEventListener("change", change);
   root.innerHTML =
     '<main class="startup"><span class="eyebrow">Orchestration</span><h1>Opening your workspace…</h1><p>Loading projects, teams, and task state.</p></main>';
   const ready = refresh().then(() => {
@@ -334,6 +404,7 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
       window.clearTimeout(notificationTimer);
       root.removeEventListener("click", click);
       root.removeEventListener("keydown", chartKey);
+      root.removeEventListener("change", change);
       if (dialog?.isConnected) dialog.close();
     },
   };

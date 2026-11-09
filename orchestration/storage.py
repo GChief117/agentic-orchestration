@@ -38,6 +38,19 @@ class Store:
         """
         )
         self._migrate_projects()
+        for row in self.db.execute(
+            "SELECT id,delivery FROM goals WHERE delivery IS NOT NULL"
+        ).fetchall():
+            delivery = json.loads(row["delivery"])
+            if delivery.get("state") == "rendering":
+                delivery.update(
+                    state="failed",
+                    error="Delivery was interrupted by restart. Export it again to retry.",
+                )
+                self.db.execute(
+                    "UPDATE goals SET delivery=? WHERE id=?",
+                    (json.dumps(delivery), row["id"]),
+                )
         # An interrupted operation may have committed effects. Never replay it silently.
         for row in self.db.execute(
             "SELECT id FROM tasks WHERE state IN ('running','cancelling')"
@@ -69,7 +82,7 @@ class Store:
         """
         )
         for table, additions in {
-            "goals": ("project_id",),
+            "goals": ("project_id", "deliverable", "delivery"),
             "tasks": ("project_id", "agent_id"),
             "attempts": ("project_id", "agent_id"),
         }.items():
@@ -234,6 +247,13 @@ class Store:
             )
         return [self.decode(row) for row in rows]
 
+    def goal(self, goal_id):
+        """Return one durable goal, including its requested and produced deliverable."""
+        row = self.db.execute("SELECT * FROM goals WHERE id=?", (goal_id,)).fetchone()
+        if row is None:
+            raise ValueError("Unknown goal")
+        return self.decode(row)
+
     def event(self, task_id, message):
         """Append a timestamped event to the current transaction without committing it."""
         self.db.execute(
@@ -241,7 +261,7 @@ class Store:
             (time.time(), task_id, message),
         )
 
-    def create_goal(self, project_id, title, definitions, target):
+    def create_goal(self, project_id, title, definitions, target, deliverable=None):
         """Stage a goal and normalized tasks, returning the generated goal ID.
 
         Link each task to its project and agent; translate plan-local dependency
@@ -250,8 +270,14 @@ class Store:
         goal_id = uuid.uuid4().hex
         identifiers = [uuid.uuid4().hex for _ in definitions]
         self.db.execute(
-            "INSERT INTO goals(id,title,created,project_id) VALUES(?,?,?,?)",
-            (goal_id, title, time.time(), project_id),
+            "INSERT INTO goals(id,title,created,project_id,deliverable) VALUES(?,?,?,?,?)",
+            (
+                goal_id,
+                title,
+                time.time(),
+                project_id,
+                json.dumps(deliverable) if deliverable else None,
+            ),
         )
         for index, definition in enumerate(definitions):
             self.db.execute(
@@ -295,6 +321,8 @@ class Store:
             "responsibilities",
             "capabilities",
             "collaborators",
+            "deliverable",
+            "delivery",
         ):
             if key in value:
                 value[key] = json.loads(value[key]) if value[key] else None
@@ -328,7 +356,7 @@ class Store:
         return {
             **self.scheduling_state(),
             "goals": [
-                dict(row)
+                self.decode(row)
                 for row in self.db.execute("SELECT * FROM goals ORDER BY created DESC")
             ],
             "events": [

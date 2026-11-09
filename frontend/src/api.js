@@ -152,6 +152,29 @@ export class ApiClient {
   submitGoal(goal) {
     return this.send("/api/goals", goal);
   }
+  /** Render a finished goal in the requested document format without rerunning its agents. */
+  generateDeliverable(goalId, preferences) {
+    return this.send(`/api/goals/${encodeURIComponent(goalId)}/deliverable`, preferences);
+  }
+  /** Fetch a rendered file with in-memory authorization, never credentials in its URL. */
+  async downloadDeliverable(goalId) {
+    const response = await this.request(`${this.baseUrl}/api/goals/${encodeURIComponent(goalId)}/deliverable`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${this.token}` },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      let message = "The deliverable could not be downloaded.";
+      try { message = (await response.json()).error || message; } catch { /* Keep a readable fallback for non-JSON failures. */ }
+      if (response.status === 403) message = "Your local session expired. Reload this page to reconnect.";
+      throw new ApiError(message, response.status);
+    }
+    const blob = await response.blob();
+    if (!blob.size) throw new ApiError("The deliverable is empty.", response.status);
+    const disposition = response.headers?.get?.("Content-Disposition") || "";
+    const name = disposition.match(/filename="([^"\r\n]+)"/i)?.[1] || "report";
+    return { blob, name };
+  }
   /**
    * Request cancellation while retaining already completed work.
    * @param {string} id Durable goal identity.

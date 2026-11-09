@@ -257,6 +257,20 @@ def make_handler(
                 self.send(HTTPStatus.OK, {"providers": engine.providers.list()})
             elif route == "/api/state":
                 self.send(HTTPStatus.OK, self.snapshot())
+            elif route.startswith("/api/goals/") and route.endswith("/deliverable"):
+                try:
+                    goal_id = route.removeprefix("/api/goals/").removesuffix(
+                        "/deliverable"
+                    )
+                    data, name, content_type = engine.read_deliverable(goal_id)
+                    self.send(
+                        HTTPStatus.OK,
+                        data,
+                        content_type,
+                        {"Content-Disposition": f'attachment; filename="{name}"'},
+                    )
+                except (ValueError, OSError, PermissionError) as exc:
+                    self.send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
             elif route.startswith("/api/artifact/"):
                 self.serve_artifact(route.removeprefix("/api/artifact/"))
             else:
@@ -366,6 +380,7 @@ def make_handler(
                             data.get("coordinator"),
                             data.get("source_files"),
                             allow_cli=local_features,
+                            deliverable=data.get("deliverable"),
                         ),
                     )
                 elif route.startswith("/api/projects/") and route.endswith("/team"):
@@ -404,8 +419,18 @@ def make_handler(
                         data.get("tasks"),
                         allow_cli=local_features,
                         expected_team_revision=data.get("team_revision"),
+                        deliverable=data.get("deliverable"),
                     )
                     self.send(HTTPStatus.CREATED, {"id": goal_id})
+                elif route.startswith("/api/goals/") and route.endswith("/deliverable"):
+                    goal_id = route.removeprefix("/api/goals/").removesuffix(
+                        "/deliverable"
+                    )
+                    settings = data.get("deliverable", data) or None
+                    self.send(
+                        HTTPStatus.OK,
+                        {"delivery": engine.export_goal(goal_id, settings)},
+                    )
                 elif route == "/api/cancel":
                     goal_id = data.get("id")
                     if not isinstance(goal_id, str):

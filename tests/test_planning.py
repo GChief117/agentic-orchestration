@@ -172,6 +172,19 @@ class PlanningTests(unittest.TestCase):
         self.assertFalse(result["readiness"]["requires_source_context"])
         self.assertTrue(result["tasks"])
 
+    def test_deliverable_preferences_reach_the_coordinator(self):
+        settings = {"format": "html", "style": "ocean"}
+        result = propose_goal(
+            self.engine,
+            self.project_id,
+            "Prepare a useful report",
+            deliverable=settings,
+        )
+        prompt = json.loads(self.model.calls[0][0][3])
+        self.assertEqual(prompt["deliverable"], settings)
+        self.assertEqual(result["deliverable"], settings)
+        self.assertIn("flowchart TD", self.model.calls[0][0][2])
+
     def test_readiness_is_required_and_cannot_hide_missing_context(self):
         invalid = [
             None,
