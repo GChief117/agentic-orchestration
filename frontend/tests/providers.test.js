@@ -22,12 +22,12 @@ test("provider dialog launches only on click and never treats launch as authenti
     {
       id: "gemini",
       name: "Gemini",
-      tool: "Gemini CLI",
+      tool: "Antigravity CLI",
       state: "not_installed",
       installed: false,
       can_launch: false,
-      command: "gemini",
-      docs: "https://geminicli.com/docs/get-started/authentication/",
+      command: "agy",
+      docs: "https://antigravity.google/",
     },
   ];
   const api = {

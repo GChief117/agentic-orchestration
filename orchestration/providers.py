@@ -28,11 +28,11 @@ PROVIDERS = {
     },
     "gemini": {
         "name": "Gemini",
-        "tool": "Gemini CLI",
-        "binary": "gemini",
+        "tool": "Antigravity CLI",
+        "binary": "agy",
         "login": [],
         "check": None,
-        "docs": "https://geminicli.com/docs/get-started/authentication/",
+        "docs": "https://antigravity.google/",
     },
 }
 

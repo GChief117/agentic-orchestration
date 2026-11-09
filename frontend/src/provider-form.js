@@ -12,12 +12,12 @@ const states = {
 export function openProviderForm(document, api) {
   const controller = mountDialog(
     document,
-    "Model connections",
+    "Local CLI sign-in",
     "Your accounts",
   );
   const { dialog } = controller;
   const content = dialog.querySelector("[data-content]");
-  content.innerHTML = `<div class="dialog-body"><p>Choose the account you want to use. Sign-in opens the provider’s official tool in Terminal, where you complete its browser sign-in.</p><div class="notice">These connections use your local provider tools. Agent tasks currently run local operations; signing in does not yet enable model execution.</div><div data-providers aria-live="polite">Checking installed tools…</div><p data-provider-message role="status"></p><div class="notice danger hidden" data-error role="alert"></div></div><footer class="dialog-footer"><span>Credentials stay with the provider’s tool.</span><button class="button" data-refresh-providers>Refresh status</button></footer>`;
+  content.innerHTML = `<div class="dialog-body"><p>Choose the account you want to use. Sign-in opens the provider’s official tool in Terminal, where you complete its browser sign-in.</p><div class="notice">These accounts belong to your local CLI tools. Model tasks in this app use separate API-key connections.</div><div data-providers aria-live="polite">Checking installed tools…</div><p data-provider-message role="status"></p><div class="notice danger hidden" data-error role="alert"></div></div><footer class="dialog-footer"><span>Credentials stay with the provider’s tool.</span><button class="button" data-refresh-providers>Refresh status</button></footer>`;
   const list = content.querySelector("[data-providers]");
 
   /** Render truthful provider states and commands returned by the local backend. */
@@ -25,7 +25,7 @@ export function openProviderForm(document, api) {
     list.innerHTML = providers
       .map(
         (provider) =>
-          `<section class="provider-card"><div><h3>${e(provider.name)}</h3><p>${e(provider.tool)} · ${e(states[provider.state] || "Sign-in not verified")}</p></div><button class="button primary" data-provider="${e(provider.id)}" ${provider.can_launch ? "" : "disabled"}>${provider.state === "signed_in" ? "Sign in again" : `Sign in with ${e(provider.name)}`}</button><p class="provider-help">${provider.id === "gemini" ? "In Gemini CLI, select Sign in with Google. Return here after completing the browser flow. This app cannot verify Gemini’s sign-in state yet." : "Finish the sign-in flow, then refresh status here."}</p><div class="provider-help">${provider.installed ? "Manual sign-in:" : "Install the official tool first, then run:"} <code>${e(provider.command)}</code> · <a href="${e(provider.docs)}" target="_blank" rel="noopener noreferrer">Setup guide ↗</a></div></section>`,
+          `<section class="provider-card"><div><h3>${e(provider.name)}</h3><p>${e(provider.tool)} · ${e(states[provider.state] || "Sign-in not verified")}</p></div><button class="button primary" data-provider="${e(provider.id)}" ${provider.can_launch ? "" : "disabled"}>${provider.state === "signed_in" ? "Sign in again" : `Sign in with ${e(provider.name)}`}</button><p class="provider-help">${provider.id === "gemini" ? "Start Antigravity CLI with agy and complete its Google sign-in if prompted. This app cannot verify Antigravity’s sign-in state yet." : "Finish the sign-in flow, then refresh status here."}</p><div class="provider-help">${provider.installed ? "Manual sign-in:" : "Install the official tool first, then run:"} <code>${e(provider.command)}</code> · <a href="${e(provider.docs)}" target="_blank" rel="noopener noreferrer">Tool website ↗</a></div></section>`,
       )
       .join("");
   }
