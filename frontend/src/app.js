@@ -4,7 +4,7 @@ import { openModelConnections } from "./model-connections.js";
 import { openContextForm } from "./context-form.js";
 import { openTeamForm } from "./team-form.js";
 import { projectView } from "./domain.js";
-import { openGoalForm, openProjectForm, openTaskDetails, downloadTaskArtifact, downloadGoalDeliverable } from "./forms.js";
+import { openGoalForm, openProjectForm, openTaskDetails, openDeleteGoalForm, downloadTaskArtifact, downloadGoalDeliverable } from "./forms.js";
 import { renderWorkspace } from "./views.js";
 
 /**
@@ -74,7 +74,7 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
       : null;
     const focusKey =
       focused &&
-      ["project", "inspect", "cancel", "tab", "action", "toggleGoal", "collapseGoals", "expandGoals", "downloadGoal", "generateDeliverable"].find(
+      ["project", "inspect", "cancel", "deleteGoal", "tab", "action", "toggleGoal", "collapseGoals", "expandGoals", "downloadGoal", "generateDeliverable"].find(
         (key) => focused.dataset[key],
       );
     const focusValue = focusKey && focused.dataset[focusKey];
@@ -232,9 +232,9 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
    */
   async function click(event) {
     const button = event.target.closest(
-      "[data-action], [data-project], [data-cancel], [data-inspect], [data-download-artifact], [data-org-agent], [data-toggle-goal], [data-collapse-goals], [data-expand-goals], [data-download-goal], [data-generate-deliverable]",
+      "[data-action], [data-project], [data-cancel], [data-delete-goal], [data-inspect], [data-download-artifact], [data-org-agent], [data-toggle-goal], [data-collapse-goals], [data-expand-goals], [data-download-goal], [data-generate-deliverable]",
     );
-    if (!button || !root.contains(button)) return;
+    if (!button || button.disabled || !root.contains(button)) return;
     event.preventDefault();
     try {
       if (button.dataset.toggleGoal) {
@@ -303,6 +303,25 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
             snapshot.agents.find((agent) => agent.id === task.agent_id),
             api,
           );
+      } else if (button.dataset.deleteGoal) {
+        const id = button.dataset.deleteGoal;
+        const goal = snapshot.goals.find((item) => item.id === id);
+        if (!goal) return;
+        dialog = openDeleteGoalForm(document, goal, async () => {
+          await api.deleteGoal(id);
+          collapsedGoals.delete(id);
+          deliveryDrafts.delete(id);
+          generatingGoals.delete(id);
+          saveCollapsedGoals();
+          const taskIds = new Set(snapshot.tasks.filter((task) => task.goal_id === id).map((task) => task.id));
+          snapshot.goals = snapshot.goals.filter((item) => item.id !== id);
+          snapshot.tasks = snapshot.tasks.filter((task) => !taskIds.has(task.id));
+          snapshot.attempts = snapshot.attempts?.filter((attempt) => !taskIds.has(attempt.task_id));
+          snapshot.events = snapshot.events.filter((event) => !taskIds.has(event.task_id));
+          render();
+          await afterMutation();
+          notify("Goal deleted. Saved workspace files were kept.");
+        });
       } else if (button.dataset.cancel) {
         button.disabled = true;
         await api.cancelGoal(button.dataset.cancel);

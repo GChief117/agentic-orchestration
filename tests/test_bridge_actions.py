@@ -1,6 +1,7 @@
 """Bridge mutations are fixed actions with configured scope, exercised without SSH."""
 
 import base64
+from contextlib import contextmanager
 import getpass
 import io
 import json
@@ -15,6 +16,7 @@ from unittest.mock import patch
 import zipfile
 
 from orchestration.bridge_actions import BridgeActions, _REMOTE_ACTIONS
+from orchestration.postgres_setup import SETUP_CAPABILITIES
 
 
 def remote_namespace():
@@ -23,6 +25,27 @@ def remote_namespace():
     source = _REMOTE_ACTIONS.split("\ntry:\n    print(json.dumps(main()))")[0]
     exec(compile(source, "bridge-actions", "exec"), namespace)
     return namespace
+
+
+@contextmanager
+def installed_workspace_apps(namespace, runner):
+    """Fake installed macOS apps while retaining real fixture path validation."""
+    original_file, original_directory = Path.is_file, Path.is_dir
+    with patch.object(
+        Path,
+        "is_file",
+        lambda path: str(path) == "/opt/homebrew/bin/code" or original_file(path),
+    ), patch.object(
+        Path,
+        "is_dir",
+        lambda path: str(path) == "/Applications/pgAdmin 4.app"
+        or original_directory(path),
+    ), patch.object(
+        namespace["os"], "access", return_value=True
+    ), patch.object(
+        namespace["subprocess"], "run", side_effect=runner
+    ):
+        yield
 
 
 class FakeBridges:
@@ -37,6 +60,9 @@ class FakeBridges:
             "agent_command": "/operator/bridge",
             "notes_enabled": True,
             "demo_directory": "/demos/sample",
+            "editor_workspace": "/projects/Polaris.code-workspace",
+            "editor_profile": "Polaris",
+            "postgres_enabled": True,
         }
 
     def _configuration(self, project_id):
@@ -82,6 +108,9 @@ class BridgeActionTests(unittest.TestCase):
     def test_capabilities_require_explicit_private_configuration(self):
         self.assertTrue(self.adapter.ready("project", "bridge.notes.create"))
         self.assertTrue(self.adapter.ready("project", "bridge.demo.launch"))
+        self.assertTrue(self.adapter.ready("project", "bridge.workspace.open"))
+        for capability in SETUP_CAPABILITIES:
+            self.assertTrue(self.adapter.ready("project", capability))
         self.assertFalse(self.adapter.ready("project", "shell.run"))
         self.assertFalse(self.adapter.ready("missing", "bridge.notes.create"))
         self.bridges.entry["notes_enabled"] = False
@@ -90,6 +119,238 @@ class BridgeActionTests(unittest.TestCase):
                 "project", "bridge.notes.create", {"title": "Draft", "content": "Hi"}
             )
         self.assertEqual(self.calls, [])
+
+    def test_workspace_capability_requires_editor_and_execution_bridge(self):
+        self.bridges.entry.pop("editor_workspace")
+        self.assertFalse(self.adapter.ready("project", "bridge.workspace.open"))
+        self.bridges.entry["editor_workspace"] = "/projects/Polaris.code-workspace"
+        self.bridges.entry.pop("agent_command")
+        self.assertFalse(self.adapter.ready("project", "bridge.workspace.open"))
+
+    def test_database_setup_requires_explicit_flag_and_execution_bridge(self):
+        for flag in (None, False, "true", 1):
+            self.bridges.entry["postgres_enabled"] = flag
+            for capability in SETUP_CAPABILITIES:
+                with self.subTest(capability=capability, flag=flag):
+                    self.assertFalse(self.adapter.ready("project", capability))
+                    with self.assertRaises(PermissionError):
+                        self.adapter.execute("project", capability, {})
+        self.bridges.entry["postgres_enabled"] = True
+        self.bridges.entry.pop("agent_command")
+        for capability in SETUP_CAPABILITIES:
+            self.assertFalse(self.adapter.ready("project", capability))
+        self.assertEqual(self.calls, [])
+
+    def test_database_setup_uses_fixed_empty_payload_without_a_demo_archive(self):
+        for capability in SETUP_CAPABILITIES:
+            progress = []
+            with patch.object(self.adapter, "_archive", side_effect=AssertionError):
+                self.adapter.execute(
+                    "project", capability, {}, progress=progress.append
+                )
+            payload = self.calls[-1][1]
+            self.assertEqual(payload["action"], capability)
+            self.assertEqual(payload["parameters"], {})
+            self.assertIs(payload["postgres_enabled"], True)
+            self.assertNotIn("archive", payload)
+            self.assertNotIn("project_definition", payload)
+            self.assertEqual(progress[0]["phase"], "working")
+            self.assertIn("connected Mac", progress[0]["message"])
+
+    def test_database_setup_rejects_task_parameters_before_the_bridge(self):
+        for capability in SETUP_CAPABILITIES:
+            with self.subTest(capability=capability), self.assertRaises(ValueError):
+                self.adapter.execute(
+                    "project", capability, {"host": "outside.example.com"}
+                )
+        self.assertEqual(self.calls, [])
+
+    def test_fixed_remote_program_dispatches_database_setup_after_identity_check(self):
+        for capability, function in (
+            ("bridge.postgres.prepare", "postgres_prepare"),
+            ("bridge.pgadmin.register", "pgadmin_register"),
+        ):
+            namespace = remote_namespace()
+            calls = []
+            namespace[function] = lambda payload: calls.append(payload) or {"ok": True}
+            payload = {
+                "hostname": namespace["socket"].gethostname(),
+                "username": getpass.getuser(),
+                "action": capability,
+                "postgres_enabled": True,
+                "parameters": {},
+            }
+            namespace["sys"] = types.SimpleNamespace(
+                stdin=types.SimpleNamespace(
+                    buffer=io.BytesIO(json.dumps(payload).encode())
+                )
+            )
+            with self.subTest(capability=capability):
+                self.assertEqual(namespace["main"]()["result"], {"ok": True})
+                self.assertEqual(calls, [payload])
+                payload["hostname"] = "wrong-target"
+                namespace["sys"].stdin.buffer = io.BytesIO(json.dumps(payload).encode())
+                with self.assertRaisesRegex(ValueError, "identity"):
+                    namespace["main"]()
+                self.assertEqual(len(calls), 1)
+
+    def test_workspace_launch_uses_configured_paths_without_packaging_a_demo(self):
+        progress = []
+        with patch.object(self.adapter, "_archive", side_effect=AssertionError):
+            self.adapter.execute(
+                "project", "bridge.workspace.open", {}, progress=progress.append
+            )
+        _, payload, _, _, _ = self.calls[0]
+        self.assertEqual(payload["parameters"], {"apps": ["vscode", "pgadmin"]})
+        self.assertEqual(
+            payload["editor_workspace"], "/projects/Polaris.code-workspace"
+        )
+        self.assertEqual(payload["editor_profile"], "Polaris")
+        self.assertNotIn("archive", payload)
+        self.assertNotIn("project_definition", payload)
+        self.assertIn("workspace applications", progress[0]["message"])
+
+    def test_workspace_apps_are_a_strict_allowlist_before_any_remote_call(self):
+        for parameters in (
+            {"apps": []},
+            {"apps": "vscode"},
+            {"apps": ["vscode", "vscode"]},
+            {"apps": ["Terminal"]},
+            {"apps": ["vscode; open Terminal"]},
+            {"apps": [{}]},
+            {"apps": ["vscode"], "editor_workspace": "/other/workspace"},
+        ):
+            with self.subTest(parameters=parameters), self.assertRaises(ValueError):
+                self.adapter.execute("project", "bridge.workspace.open", parameters)
+        self.assertEqual(self.calls, [])
+
+    def test_workspace_remote_launch_and_verified_window_state(self):
+        namespace = remote_namespace()
+        workspace = self.root / "Polaris.code-workspace"
+        workspace.write_text('{"folders": []}')
+        calls = []
+
+        def run(args, **kwargs):
+            calls.append((args, kwargs))
+            output = ""
+            if args[0] == "/usr/bin/osascript":
+                output = "vscode\ttrue\ttrue\tfalse\t1\ttrue\ttrue\npgadmin\ttrue\ttrue\ttrue\t1\ttrue\ttrue\n"
+            return subprocess.CompletedProcess(args, 0, output, "")
+
+        with installed_workspace_apps(namespace, run):
+            result = namespace["workspace_open"](
+                {
+                    "root": str(self.root),
+                    "editor_workspace": str(workspace),
+                    "editor_profile": "Polaris",
+                    "parameters": {},
+                }
+            )
+        self.assertEqual(result["opened_apps"], ["vscode", "pgadmin"])
+        self.assertEqual(
+            calls[0][0],
+            [
+                "/opt/homebrew/bin/code",
+                "--profile",
+                "Polaris",
+                "--reuse-window",
+                str(workspace),
+            ],
+        )
+        self.assertEqual(
+            calls[1][0], ["/usr/bin/open", "-a", "/Applications/pgAdmin 4.app"]
+        )
+        self.assertEqual(calls[2][0], ["/usr/bin/osascript", "-"])
+        self.assertTrue(result["arranged"])
+        self.assertTrue(result["windows"]["vscode"]["visible"])
+        self.assertFalse(result["windows"]["vscode"]["frontmost"])
+        self.assertTrue(result["windows"]["pgadmin"]["frontmost"])
+        self.assertNotIn("arrangement_error", result)
+        script = calls[2][1]["input"]
+        self.assertIn('tell application "System Events"', script)
+        self.assertIn('tell application "Finder"', script)
+        self.assertIn("set position of window 1", script)
+
+    def test_workspace_visibility_failure_does_not_undo_successful_launch(self):
+        workspace = self.root / "Polaris.code-workspace"
+        workspace.write_text("{}")
+        for status in ("denied", "timeout", "partial"):
+            namespace = remote_namespace()
+
+            def run(args, **kwargs):
+                if args[0] != "/usr/bin/osascript":
+                    return subprocess.CompletedProcess(args, 0, "", "")
+                if status == "timeout":
+                    raise subprocess.TimeoutExpired(args, 25)
+                output = (
+                    "vscode\ttrue\ttrue\ttrue\tunknown\tfalse\tunknown\n"
+                    if status == "partial"
+                    else ""
+                )
+                return subprocess.CompletedProcess(args, status == "denied", output, "")
+
+            with self.subTest(status=status), installed_workspace_apps(namespace, run):
+                result = namespace["workspace_open"](
+                    {
+                        "root": str(self.root),
+                        "editor_workspace": str(workspace),
+                        "parameters": {"apps": ["vscode"]},
+                    }
+                )
+            self.assertEqual(result["opened_apps"], ["vscode"])
+            self.assertEqual(result["editor_profile"], "Default")
+            self.assertFalse(result["arranged"])
+            self.assertIn("arrangement_error", result)
+            self.assertIsNone(result["windows"]["vscode"]["window_count"])
+            if status != "partial":
+                self.assertIsNone(result["windows"]["vscode"]["visible"])
+
+    def test_workspace_rejects_redirected_or_outside_files_before_launch(self):
+        namespace = remote_namespace()
+        approved = self.root / "approved"
+        approved.mkdir()
+        outside = self.root / "outside.code-workspace"
+        outside.write_text("{}")
+        linked = approved / "linked.code-workspace"
+        linked.symlink_to(outside)
+        invalid_suffix = approved / "workspace.json"
+        invalid_suffix.write_text("{}")
+        with patch.object(namespace["subprocess"], "run") as run:
+            for workspace in (
+                outside,
+                linked,
+                invalid_suffix,
+                Path("relative.code-workspace"),
+            ):
+                with self.subTest(workspace=workspace), self.assertRaises(ValueError):
+                    namespace["workspace_open"](
+                        {
+                            "root": str(approved),
+                            "editor_workspace": str(workspace),
+                            "parameters": {},
+                        }
+                    )
+        run.assert_not_called()
+
+    def test_workspace_remote_revalidates_apps_and_profile(self):
+        namespace = remote_namespace()
+        workspace = self.root / "Polaris.code-workspace"
+        workspace.write_text("{}")
+        payload = {
+            "root": str(self.root),
+            "editor_workspace": str(workspace),
+            "parameters": {},
+        }
+        with patch.object(namespace["subprocess"], "run") as run:
+            for changes in (
+                {"parameters": {"apps": ["Terminal"]}},
+                {"parameters": {"apps": ["vscode", "vscode"]}},
+                {"parameters": {"command": "arbitrary"}},
+                {"editor_profile": "profile\ncommand"},
+            ):
+                with self.subTest(changes=changes), self.assertRaises(ValueError):
+                    namespace["workspace_open"]({**payload, **changes})
+        run.assert_not_called()
 
     def test_note_content_is_stdin_data_not_part_of_the_remote_command(self):
         content = 'Hi "Jason"; $(touch danger)\nThis is a draft.'
@@ -164,6 +425,11 @@ class BridgeActionTests(unittest.TestCase):
         )
         self.assertIn("archive", self.calls[0][1])
         self.assertEqual(self.calls[0][1]["demo_directory"], "/demos/sample")
+        self.assertEqual(
+            self.calls[0][1]["editor_workspace"], "/projects/Polaris.code-workspace"
+        )
+        self.assertEqual(self.calls[0][1]["editor_profile"], "Polaris")
+        self.assertIs(self.calls[0][1]["postgres_enabled"], True)
 
     def test_identity_is_verified_before_any_mutating_action(self):
         namespace = remote_namespace()

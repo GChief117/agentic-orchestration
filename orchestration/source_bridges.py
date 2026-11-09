@@ -208,7 +208,15 @@ class SourceBridges:
             or not required <= set(entry)
             or set(entry)
             - required
-            - {"name", "agent_command", "demo_directory", "notes_enabled"}
+            - {
+                "name",
+                "agent_command",
+                "demo_directory",
+                "notes_enabled",
+                "editor_workspace",
+                "editor_profile",
+                "postgres_enabled",
+            }
         ):
             raise ValueError("Source bridge target has invalid configuration fields")
         entry = dict(entry)
@@ -279,6 +287,8 @@ class SourceBridges:
                 )
         if "notes_enabled" in entry and type(entry["notes_enabled"]) is not bool:
             raise ValueError("Notes capability must be explicitly enabled or disabled")
+        if "postgres_enabled" in entry and type(entry["postgres_enabled"]) is not bool:
+            raise ValueError("PostgreSQL setup must be explicitly enabled or disabled")
         if "demo_directory" in entry:
             demo = entry["demo_directory"]
             if (
@@ -290,6 +300,24 @@ class SourceBridges:
                 raise ValueError(
                     "The demo directory must be a separate folder directly inside the configured root"
                 )
+        if "editor_workspace" in entry:
+            workspace = entry["editor_workspace"]
+            if (
+                not isinstance(workspace, str)
+                or str(PurePosixPath(workspace)) != workspace
+                or not PurePosixPath(workspace).is_relative_to(PurePosixPath(root))
+                or ".." in PurePosixPath(workspace).parts
+                or PurePosixPath(workspace).suffix != ".code-workspace"
+            ):
+                raise ValueError(
+                    "The editor workspace must be a canonical workspace file inside the source root"
+                )
+        if "editor_profile" in entry and (
+            not isinstance(entry["editor_profile"], str)
+            or not 1 <= len(entry["editor_profile"]) <= 100
+            or any(c in entry["editor_profile"] for c in "\n\r\x00")
+        ):
+            raise ValueError("The editor profile must be a short name")
         return entry
 
     def configured(self, project_id):

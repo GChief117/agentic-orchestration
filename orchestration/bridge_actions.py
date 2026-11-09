@@ -1,8 +1,8 @@
 """Fixed, explicitly configured bridge actions executed by saved team tasks.
 
-The adapter accepts task data, not shell commands. Its only mutations are creating
-a Notes draft and installing/starting a separate local demo workspace. Remote
-identity is checked inside the same process before either action takes effect.
+The adapter accepts task data, not shell commands. It can create Notes drafts,
+start an isolated demo, open approved workspace apps, and perform explicitly
+enabled local database setup. Remote identity is checked before any action.
 """
 
 import base64
@@ -13,13 +13,19 @@ import shlex
 import zipfile
 
 from .cli_models import CLIRuntime
+from .postgres_setup import (
+    REMOTE_POSTGRES_SETUP,
+    SETUP_CAPABILITIES,
+    validate_setup_parameters,
+)
 
 MAX_ACTION_INPUT = 4 * 1024 * 1024
 MAX_ARCHIVE_BYTES = 3 * 1024 * 1024
 MAX_NOTE_CHARACTERS = 48000
 ACTION_TIMEOUT = 120
 
-_REMOTE_ACTIONS = r'''
+_REMOTE_ACTIONS = (
+    r'''
 import base64
 import getpass
 import hashlib
@@ -76,6 +82,176 @@ def atomic_json(path, value):
 def apple_string(value):
     """Quote plain task data as one AppleScript literal."""
     return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r') + '"'
+
+def workspace_apps(parameters):
+    """Accept only the two fixed workspace applications, without shell input."""
+    if not isinstance(parameters, dict) or set(parameters) - {"apps"}:
+        raise ValueError("Workspace parameters may contain only apps")
+    apps = parameters.get("apps", ["vscode", "pgadmin"])
+    if (not isinstance(apps, list) or not apps or len(apps) > 2
+            or any(not isinstance(app, str) or app not in {"vscode", "pgadmin"} for app in apps)
+            or len(set(apps)) != len(apps)):
+        raise ValueError("Choose vscode, pgadmin, or both once each")
+    return apps
+
+def workspace_window_script(apps):
+    """Build fixed AppleScript that arranges windows and reports observed state."""
+    candidates = {"vscode": '{"Code"}', "pgadmin": '{"pgAdmin 4", "pgAdmin4", "pgAdmin"}'}
+    lines = [
+        'on findProcess(processNames)',
+        'tell application "System Events"',
+        'repeat with processName in processNames',
+        'set matches to application processes whose name is (contents of processName)',
+        'if (count of matches) > 0 then return item 1 of matches',
+        'end repeat',
+        'end tell',
+        'return missing value',
+        'end findProcess',
+        'repeat 40 times',
+        'set allReady to true',
+    ]
+    for app in apps:
+        lines.extend([
+            'set targetProcess to my findProcess(' + candidates[app] + ')',
+            'if targetProcess is missing value then',
+            'set allReady to false',
+            'else',
+            'try',
+            'tell application "System Events" to set windowTotal to count of windows of targetProcess',
+            'if windowTotal is 0 then set allReady to false',
+            'end try',
+            'end if',
+        ])
+    lines.extend([
+        'if allReady then exit repeat',
+        'delay 0.25',
+        'end repeat',
+        'set canArrange to false',
+        'try',
+        'tell application "Finder" to set desktopBounds to bounds of window of desktop',
+        'set leftEdge to (item 1 of desktopBounds) + 16',
+        'set topEdge to (item 2 of desktopBounds) + 40',
+        'set availableWidth to (item 3 of desktopBounds) - leftEdge - 16',
+        'set availableHeight to (item 4 of desktopBounds) - topEdge - 16',
+        'set paneWidth to (availableWidth - ' + str(16 * (len(apps) - 1)) + ') div ' + str(len(apps)),
+        'if paneWidth > 100 and availableHeight > 100 then set canArrange to true',
+        'end try',
+    ])
+    for index, app in enumerate(apps):
+        lines.extend([
+            'set arranged' + str(index) + ' to "false"',
+            'set targetProcess to my findProcess(' + candidates[app] + ')',
+            'if targetProcess is not missing value then',
+            'tell application "System Events"',
+            'try',
+            'set visible of targetProcess to true',
+            'set frontmost of targetProcess to true',
+            'end try',
+            'try',
+            'if canArrange and (count of windows of targetProcess) > 0 then',
+            'try',
+            'set value of attribute "AXMinimized" of window 1 of targetProcess to false',
+            'end try',
+            'set position of window 1 of targetProcess to {leftEdge + ' + str(index) + ' * (paneWidth + 16), topEdge}',
+            'set size of window 1 of targetProcess to {paneWidth, availableHeight}',
+            'set arranged' + str(index) + ' to "true"',
+            'end if',
+            'end try',
+            'end tell',
+            'end if',
+        ])
+    lines.append('set reportRows to {}')
+    for index, app in enumerate(apps):
+        lines.extend([
+            'set runningValue to "false"',
+            'set visibleValue to "unknown"',
+            'set frontmostValue to "unknown"',
+            'set windowValue to "unknown"',
+            'set windowVisibleValue to "unknown"',
+            'set targetProcess to my findProcess(' + candidates[app] + ')',
+            'if targetProcess is not missing value then',
+            'set runningValue to "true"',
+            'tell application "System Events"',
+            'try',
+            'set visibleValue to (visible of targetProcess) as text',
+            'end try',
+            'try',
+            'set frontmostValue to (frontmost of targetProcess) as text',
+            'end try',
+            'try',
+            'set windowTotal to count of windows of targetProcess',
+            'set windowValue to windowTotal as text',
+            'set hasVisibleWindow to false',
+            'repeat with candidateWindow in windows of targetProcess',
+            'if (value of attribute "AXMinimized" of candidateWindow) is false then set hasVisibleWindow to true',
+            'end repeat',
+            'if visibleValue is "true" then set windowVisibleValue to hasVisibleWindow as text',
+            'if visibleValue is "false" or windowTotal is 0 then set windowVisibleValue to "false"',
+            'end try',
+            'end tell',
+            'end if',
+            'set end of reportRows to "' + app + '" & tab & runningValue & tab & visibleValue & tab & frontmostValue & tab & windowValue & tab & arranged' + str(index) + ' & tab & windowVisibleValue',
+        ])
+    lines.extend([
+        'set AppleScript\'s text item delimiters to linefeed',
+        'return reportRows as text',
+    ])
+    return '\n'.join(lines)
+
+def workspace_open(payload):
+    """Open configured development apps; never inspect credentials or databases."""
+    apps = workspace_apps(payload["parameters"])
+    root = canonical_directory(payload["root"])
+    workspace = Path(payload["editor_workspace"])
+    if (not root.is_dir() or not workspace.is_absolute() or workspace.suffix != ".code-workspace"
+            or workspace.is_symlink() or not workspace.is_file() or workspace.resolve() != workspace):
+        raise ValueError("Editor workspace must be an existing canonical .code-workspace file inside the configured root")
+    try:
+        workspace.relative_to(root)
+    except ValueError:
+        raise ValueError("Editor workspace must remain inside the configured root")
+    canonical_directory(str(workspace.parent))
+    profile = payload.get("editor_profile", "Default")
+    if not isinstance(profile, str) or not profile.strip() or len(profile) > 100 or any(character in profile for character in "\x00\r\n"):
+        raise ValueError("Editor profile must contain 1–100 characters without control lines")
+    commands = {}
+    if "vscode" in apps:
+        locations = ["/opt/homebrew/bin/code", "/usr/local/bin/code", "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"]
+        executable = next((location for location in locations if Path(location).is_file() and os.access(location, os.X_OK)), None)
+        if executable is None:
+            raise ValueError("Visual Studio Code CLI is not installed in an approved location")
+        commands["vscode"] = [executable, "--profile", profile, "--reuse-window", str(workspace)]
+    if "pgadmin" in apps:
+        if not Path("/Applications/pgAdmin 4.app").is_dir():
+            raise ValueError("pgAdmin 4 is not installed at /Applications/pgAdmin 4.app")
+        commands["pgadmin"] = ["/usr/bin/open", "-a", "/Applications/pgAdmin 4.app"]
+    opened = []
+    for app in apps:
+        result = subprocess.run(commands[app], capture_output=True, text=True, timeout=25)
+        if result.returncode:
+            raise ValueError("The connected Mac could not open " + app)
+        opened.append(app)
+    windows = {app: {"running": None, "visible": None, "process_visible": None, "frontmost": None, "window_count": None, "arranged": False} for app in apps}
+    arrangement_error = "Applications opened, but window visibility and layout could not be verified. Check Automation and Accessibility permissions on the connected Mac."
+    try:
+        status = subprocess.run(["/usr/bin/osascript", "-"], input=workspace_window_script(apps), capture_output=True, text=True, timeout=25)
+        if status.returncode == 0:
+            for line in status.stdout.strip().splitlines():
+                values = line.split('\t')
+                if len(values) != 7 or values[0] not in windows:
+                    continue
+                app, running, visible, frontmost, count, arranged, window_visible = values
+                boolean = {"true": True, "false": False, "unknown": None}
+                if any(value not in boolean for value in (running, visible, frontmost, arranged, window_visible)):
+                    continue
+                windows[app] = {"running": boolean[running], "visible": boolean[window_visible], "process_visible": boolean[visible], "frontmost": boolean[frontmost], "window_count": int(count) if count.isdigit() else None, "arranged": arranged == "true"}
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    arranged = all(window["arranged"] and window["visible"] is True for window in windows.values())
+    response = {"opened_apps": opened, "editor_workspace": str(workspace), "editor_profile": profile, "windows": windows, "arranged": arranged}
+    if not arranged:
+        response["arrangement_error"] = arrangement_error
+    return response
 
 def read_note_record(path):
     """Read a bounded regular ownership record, never a redirected file."""
@@ -313,6 +489,11 @@ def demo_launch(payload):
         config = {project_id: {"name": "Local project tools", "command": str(wrapper), "agent_command": str(wrapper), "hostname": payload["hostname"], "username": payload["username"], "root": str(source_root), "repositories": payload["repositories"]}}
         if payload.get("notes_enabled"):
             config[project_id]["notes_enabled"] = True
+        if payload.get("editor_workspace"):
+            config[project_id]["editor_workspace"] = payload["editor_workspace"]
+            config[project_id]["editor_profile"] = payload.get("editor_profile", "Default")
+        if payload.get("postgres_enabled") is True:
+            config[project_id]["postgres_enabled"] = True
         atomic_json(data / "source-bridges.json", config)
         installation.update(project_id=project_id, state="seeded")
         atomic_json(record, installation)
@@ -342,6 +523,9 @@ def demo_launch(payload):
     subprocess.run(["/usr/bin/open", url], check=True, capture_output=True, timeout=10)
     return {"url": url, "demo_directory": str(demo), "project_id": project_id, "pid": process.pid, "log": str(log_path), "opened": True}
 
+'''
+    + REMOTE_POSTGRES_SETUP
+    + r'''
 def main():
     """Verify the target before selecting one of the fixed allowed actions."""
     raw = sys.stdin.buffer.read(MAX_INPUT + 1)
@@ -355,6 +539,12 @@ def main():
     action = payload["action"]
     if action == "bridge.notes.create":
         result = notes_create(payload)
+    elif action == "bridge.workspace.open":
+        result = workspace_open(payload)
+    elif action == "bridge.postgres.prepare":
+        result = postgres_prepare(payload)
+    elif action == "bridge.pgadmin.register":
+        result = pgadmin_register(payload)
     elif action == "bridge.demo.launch":
         if sys.version_info < (3, 10):
             raise ValueError("Demo launch needs Python 3.10+ in the target login environment")
@@ -369,10 +559,11 @@ except Exception as exc:
     print(json.dumps({"error": str(exc)[:1000]}))
     sys.exit(1)
 '''
+)
 
 
 class BridgeActions:
-    """Provide only operator-enabled draft editing and isolated demo launch."""
+    """Provide fixed operator-enabled workspace and local development actions."""
 
     def __init__(self, source_bridges, *, application_root=None, runner=None):
         """Attach private target policy and the application's trusted runtime source."""
@@ -384,19 +575,32 @@ class BridgeActions:
 
     def ready(self, project_id, capability):
         """Check local configuration without performing a remote action."""
-        if capability not in ("bridge.notes.create", "bridge.demo.launch"):
+        if (
+            capability
+            not in {
+                "bridge.notes.create",
+                "bridge.demo.launch",
+                "bridge.workspace.open",
+            }
+            | SETUP_CAPABILITIES
+        ):
             return False
         if not getattr(self.source_bridges, "enabled", True):
             return False
         entry = self.source_bridges._configuration(project_id)
-        return bool(
-            entry
-            and entry.get("agent_command")
-            and (
-                entry.get("notes_enabled") is True
-                if capability == "bridge.notes.create"
-                else entry.get("demo_directory")
-            )
+        required = {
+            "bridge.notes.create": "notes_enabled",
+            "bridge.demo.launch": "demo_directory",
+            "bridge.workspace.open": "editor_workspace",
+            **{action: "postgres_enabled" for action in SETUP_CAPABILITIES},
+        }
+        if not entry or not entry.get("agent_command"):
+            return False
+        value = entry.get(required[capability])
+        return (
+            value is True
+            if capability == "bridge.notes.create" or capability in SETUP_CAPABILITIES
+            else bool(value)
         )
 
     def _archive(self):
@@ -476,7 +680,31 @@ class BridgeActions:
                 or any(c in note_id for c in "\x00\r\n")
             ):
                 raise ValueError("Choose a valid app-owned note identity")
-        else:
+        elif capability in SETUP_CAPABILITIES:
+            payload.update(
+                parameters=validate_setup_parameters(capability, parameters),
+                postgres_enabled=entry.get("postgres_enabled") is True,
+            )
+        elif capability == "bridge.workspace.open":
+            apps = parameters.get("apps", ["vscode", "pgadmin"])
+            if (
+                set(parameters) - {"apps"}
+                or not isinstance(apps, list)
+                or not apps
+                or len(apps) > 2
+                or any(
+                    not isinstance(app, str) or app not in {"vscode", "pgadmin"}
+                    for app in apps
+                )
+                or len(set(apps)) != len(apps)
+            ):
+                raise ValueError("Choose vscode, pgadmin, or both once each")
+            payload.update(
+                parameters={"apps": apps},
+                editor_workspace=entry["editor_workspace"],
+                editor_profile=entry.get("editor_profile", "Default"),
+            )
+        elif capability == "bridge.demo.launch":
             if not isinstance(project_definition, dict):
                 raise ValueError("Demo launch requires the saved project definition")
             payload.update(
@@ -486,17 +714,27 @@ class BridgeActions:
                 shared_context=shared_context or {"entries": []},
                 archive=self._archive(),
             )
+            if entry.get("editor_workspace"):
+                payload["editor_workspace"] = entry["editor_workspace"]
+                payload["editor_profile"] = entry.get("editor_profile", "Default")
+            payload["postgres_enabled"] = entry.get("postgres_enabled") is True
         encoded = json.dumps(payload, ensure_ascii=False).encode()
         if len(encoded) > MAX_ACTION_INPUT:
             raise ValueError("Bridge action input exceeds its size limit")
         if progress:
             note_action = "Updating" if parameters.get("note_id") else "Creating"
+            messages = {
+                "bridge.notes.create": note_action
+                + " the Notes draft on the connected Mac",
+                "bridge.workspace.open": "Opening the configured workspace applications on the connected Mac",
+                "bridge.demo.launch": "Preparing the isolated demo on the connected Mac",
+                "bridge.postgres.prepare": "Preparing the four local development databases on the connected Mac",
+                "bridge.pgadmin.register": "Registering the local PostgreSQL connection in pgAdmin on the connected Mac",
+            }
             progress(
                 {
                     "phase": "working",
-                    "message": note_action + " the Notes draft on the connected Mac"
-                    if capability == "bridge.notes.create"
-                    else "Preparing the isolated demo on the connected Mac",
+                    "message": messages[capability],
                 }
             )
         command = shlex.join(

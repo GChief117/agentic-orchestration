@@ -31,16 +31,23 @@ An optional `agent_command` names a stdin-capable wrapper on the controlling mac
 
 The host must have its own Codex installation, saved sign-in, and Pio mapping skill. The app does not redistribute those tools or credentials. Native research does not refresh maps, create ticket branches, stash changes, run project code, or send messages. Ticket-specific Pio workflows that make those changes remain separate, explicitly requested work.
 
-Two further optional settings grant bounded actions to agents assigned those capabilities:
+Optional settings grant bounded actions to agents assigned those capabilities:
 
 ```json
 {
   "agent_command": "/absolute/path/to/stdin-capable-wrapper",
   "demo_directory": "/Users/developer/Projects/Orchestration-Demo",
-  "notes_enabled": true
+  "notes_enabled": true,
+  "editor_workspace": "/Users/developer/Projects/Development.code-workspace",
+  "editor_profile": "Development",
+  "postgres_enabled": false
 }
 ```
 
 `bridge.demo.launch` installs and opens an isolated loopback demo containing the saved project team and shared context. It copies only application runtime files, uses its own virtual environment/data directory, and refuses to overwrite unmanaged files or stop a demo with active work. `bridge.notes.create` creates a draft in Notes on the connected Mac; it never sends the draft. Updates are limited to matching notes previously created by the app. Both actions verify remote identity, run as assigned tasks, and return receipts. The demo directory must be a separate folder directly inside the configured root.
+
+`bridge.workspace.open` opens the configured VS Code workspace/profile and pgAdmin on the connected Mac. The workspace file must be inside the configured source root. Its receipt separates successful launches from observed window visibility and positioning; macOS Accessibility permissions can prevent the latter.
+
+Setting `postgres_enabled` to `true` enables the current macOS/Homebrew PostgreSQL 18 setup adapter. `bridge.postgres.prepare` creates only missing `datalake`, `accelerate`, `eab_dev`, and `scoring` databases at `127.0.0.1:5432`, using the connected OS user's password-free local connection. It does not migrate, seed, or replace databases. `bridge.pgadmin.register` adds that local server through pgAdmin's official importer, preserving existing connections and storing no password. Launch pgAdmin once first to initialize its desktop registry; refresh its server tree after registration. Both actions accept empty parameters and fail if the configured local service or desktop registry is unavailable.
 
 These settings are operator-controlled private configuration. A model cannot provide executable paths, SSH identities, or arbitrary shell commands as task parameters. All connected capabilities are disabled in hosted mode.

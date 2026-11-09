@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from .sources import source_file
+from .postgres_setup import SETUP_CAPABILITIES, validate_setup_parameters
 
 
 @dataclass(frozen=True)
@@ -81,6 +82,23 @@ def parse_tasks(
             ):
                 raise ValueError("A Notes draft needs bounded text content")
             resources = [("bridge-notes:" + project_id, "write")]
+        elif capability in SETUP_CAPABILITIES:
+            parameters = validate_setup_parameters(capability, parameters)
+            resources = [("bridge-local-database:" + project_id, "write")]
+        elif capability == "bridge.workspace.open":
+            apps = parameters.get("apps", ["vscode", "pgadmin"])
+            if (
+                set(parameters) - {"apps"}
+                or not isinstance(apps, list)
+                or not 1 <= len(apps) <= 2
+                or any(app not in ("vscode", "pgadmin") for app in apps)
+                or len(set(apps)) != len(apps)
+            ):
+                raise ValueError(
+                    "Choose VS Code, pgAdmin, or both workspace applications"
+                )
+            parameters["apps"] = apps
+            resources = [("bridge-windows:" + project_id, "write")]
         elif capability == "bridge.demo.launch":
             if (
                 set(parameters) - {"port"}

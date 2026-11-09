@@ -470,6 +470,37 @@ class Engine:
                     self.active[task_id].set()
             self.store.commit()
 
+    def delete_goal(self, goal_id):
+        """Delete idle goal records atomically without removing delivered files.
+
+        The scheduler shares this lock. Finalizing workers and document exports
+        also retain ownership until their last write, preventing deletion races.
+        """
+        if not isinstance(goal_id, str) or not goal_id:
+            raise ValueError("Goal ID is required")
+        with self.lock, self.store.db:
+            self._require_open()
+            self.store.goal(goal_id)
+            task_ids = {
+                row["id"]
+                for row in self.store.db.execute(
+                    "SELECT id FROM tasks WHERE goal_id=?", (goal_id,)
+                )
+            }
+            if task_ids.intersection(self.active) or task_ids.intersection(
+                self.threads
+            ):
+                raise ValueError(
+                    "Cancel remaining work and wait for it to stop before deleting this goal"
+                )
+            if goal_id in self.delivering:
+                raise ValueError(
+                    "Wait for the deliverable to finish before deleting this goal"
+                )
+            self.store.delete_goal(goal_id)
+            for task_id in task_ids:
+                self.live_activity.pop(task_id, None)
+
     def _loop(self):
         """Run scheduling ticks until the runtime receives its shutdown signal."""
         while not self.stopping.wait(0.05):
@@ -833,7 +864,13 @@ class Engine:
             project["has_source_bridge"] = self.source_bridges.configured(project["id"])
             project["workspace_capabilities"] = [
                 capability
-                for capability in ("bridge.notes.create", "bridge.demo.launch")
+                for capability in (
+                    "bridge.notes.create",
+                    "bridge.demo.launch",
+                    "bridge.workspace.open",
+                    "bridge.postgres.prepare",
+                    "bridge.pgadmin.register",
+                )
                 if self.bridge_actions
                 and self.bridge_actions.ready(project["id"], capability)
             ]

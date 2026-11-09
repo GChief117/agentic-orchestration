@@ -448,6 +448,34 @@ class Store:
         self.event(None, "Cancellation requested for " + goal_id)
         return active
 
+    def delete_goal(self, goal_id):
+        """Remove an idle goal and its task history within the caller's transaction.
+
+        Workspace files are deliberately retained. Reject unfinished execution
+        records even when called without the engine's in-memory worker registry.
+        """
+        self.goal(goal_id)
+        if self.db.execute(
+            "SELECT 1 FROM tasks WHERE goal_id=? AND state IN ('running','cancelling') "
+            "UNION ALL SELECT 1 FROM attempts a JOIN tasks t ON t.id=a.task_id "
+            "WHERE t.goal_id=? AND a.state='running' LIMIT 1",
+            (goal_id, goal_id),
+        ).fetchone():
+            raise ValueError(
+                "Cancel remaining work and wait for it to stop before deleting this goal"
+            )
+        self.db.execute(
+            "DELETE FROM events WHERE task_id IN (SELECT id FROM tasks WHERE goal_id=?)",
+            (goal_id,),
+        )
+        self.db.execute(
+            "DELETE FROM attempts WHERE task_id IN (SELECT id FROM tasks WHERE goal_id=?)",
+            (goal_id,),
+        )
+        self.db.execute("DELETE FROM tasks WHERE goal_id=?", (goal_id,))
+        self.db.execute("DELETE FROM goals WHERE id=?", (goal_id,))
+        self.event(None, "Goal deleted: " + goal_id + "; workspace files retained")
+
     def commit(self):
         """Commit staged state changes and events to SQLite."""
         self.db.commit()

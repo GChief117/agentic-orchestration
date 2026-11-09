@@ -11,6 +11,29 @@ import { icon, renderGoalTiming, renderTaskTiming } from "./views.js";
 import { input, value, showError, mountDialog } from "./form-controls.js";
 export { openProjectForm } from "./project-form.js";
 
+/** Confirm deletion of saved goal records; keep the dialog open if deletion fails. */
+export function openDeleteGoalForm(document, goal, onDelete) {
+  const controller = mountDialog(document, "Delete goal?", goal.title);
+  const { dialog } = controller;
+  dialog.querySelector("[data-content]").innerHTML = `<form data-delete-goal-form><div class="dialog-body"><p>Delete this goal and its task history? Queued tasks will not run. This cannot be undone.</p><p>Files and deliverables already saved in the project workspace will remain there.</p><div class="notice danger hidden" data-error role="alert"></div></div><footer class="dialog-footer"><button class="button" type="button" data-keep-goal>Keep goal</button><button class="button danger-text" type="submit" data-label="Delete goal">Delete goal</button></footer></form>`;
+  dialog.querySelector("[data-keep-goal]").onclick = () => dialog.close();
+  dialog.querySelector("form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (controller.pending) return;
+    controller.busy(true);
+    dialog.querySelector("[data-error]").classList.add("hidden");
+    try {
+      await onDelete();
+      dialog.close();
+    } catch (error) {
+      showError(dialog, error);
+    } finally {
+      controller.busy(false);
+    }
+  });
+  return dialog;
+}
+
 /**
  * Open a goal editor scoped to an existing project and its assigned roster.
  * @param {Document} document Host document.

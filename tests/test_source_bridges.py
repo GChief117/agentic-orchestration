@@ -67,6 +67,29 @@ class SourceBridgeTests(unittest.TestCase):
         self.assertFalse(self.bridge.configured("unknown"))
         self.assertEqual(self.calls, [])
 
+    def test_workspace_setup_settings_require_explicit_valid_configuration(self):
+        self.entry.update(
+            editor_workspace=str(self.root / "Polaris.code-workspace"),
+            editor_profile="Polaris",
+            postgres_enabled=True,
+        )
+        self.write_config()
+        self.assertTrue(self.bridge.configured("project123"))
+        for field, value in (
+            ("postgres_enabled", "true"),
+            ("editor_workspace", "/tmp/outside.code-workspace"),
+            ("editor_workspace", str(self.root / "project.json")),
+            ("editor_profile", "bad\nprofile"),
+        ):
+            with self.subTest(field=field, value=value):
+                original = self.entry[field]
+                self.entry[field] = value
+                self.write_config()
+                with self.assertRaises(ValueError):
+                    self.bridge.configured("project123")
+                self.entry[field] = original
+        self.assertEqual(self.calls, [])
+
     def test_path_validation_never_probes_or_reads_the_remote(self):
         self.assertEqual(
             self.bridge.validate_paths("project123", ["sample/not-created.py"]),

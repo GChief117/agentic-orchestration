@@ -11,6 +11,9 @@ class LocalConnection:
         "model.generate",
         "bridge.notes.create",
         "bridge.demo.launch",
+        "bridge.workspace.open",
+        "bridge.postgres.prepare",
+        "bridge.pgadmin.register",
     )
 
     def __init__(self, workspace):

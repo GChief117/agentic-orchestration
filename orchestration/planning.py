@@ -6,13 +6,20 @@ from pathlib import PurePosixPath, PureWindowsPath
 import uuid
 
 from .plans import parse_tasks
+from .postgres_setup import SETUP_CAPABILITIES, validate_setup_parameters
 from .projects import text
 from .estimates import estimate_plan
 from .delivery import parse_deliverable, require_renderer, visual_story_instructions
 
 MAX_PLAN_BYTES = 65536
 MAX_PLAN_TASKS = 100
-WORKSPACE_ACTIONS = ("bridge.notes.create", "bridge.demo.launch")
+WORKSPACE_ACTIONS = (
+    "bridge.notes.create",
+    "bridge.demo.launch",
+    "bridge.workspace.open",
+    "bridge.postgres.prepare",
+    "bridge.pgadmin.register",
+)
 
 
 def organization_context(project, agents):
@@ -267,6 +274,21 @@ def _tasks(plan, source_paths, namespace):
                 "Notes source task" if field == "content_task" else "Notes content",
                 80 if field == "content_task" else 48000,
             )
+        elif capability in SETUP_CAPABILITIES:
+            task["parameters"] = validate_setup_parameters(capability, params)
+        elif capability == "bridge.workspace.open":
+            apps = params.get("apps", ["vscode", "pgadmin"])
+            if (
+                set(params) - {"apps"}
+                or not isinstance(apps, list)
+                or not 1 <= len(apps) <= 2
+                or any(app not in ("vscode", "pgadmin") for app in apps)
+                or len(set(apps)) != len(apps)
+            ):
+                raise ValueError(
+                    "Choose VS Code, pgAdmin, or both workspace applications"
+                )
+            task["parameters"] = {"apps": apps}
         else:
             if (
                 set(params) - {"port"}
@@ -434,6 +456,9 @@ def propose_goal(
         "content_task must name a model.generate task included in depends_on. "
         "bridge.demo.launch launches only the configured isolated application demo on that host; "
         "its parameters are {port:8765} or another requested port from 1024 to 65535. "
+        'bridge.workspace.open opens the configured VS Code workspace and pgAdmin on the connected host; its parameters are {apps:["vscode","pgadmin"]}. '
+        "bridge.postgres.prepare creates only missing local development databases on the configured PostgreSQL 18 service, without migrations or seed data. "
+        "bridge.pgadmin.register adds that localhost connection to the initialized pgAdmin desktop registry. Both accept parameters={}. "
         "These are real changes on the configured host, not a proposal or simulated result. "
         "Do not invent additional tools, arbitrary commands, app paths, or remote destinations. "
         "Reporting lines describe ownership, while explicit "

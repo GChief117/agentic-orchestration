@@ -104,6 +104,8 @@ The **Visual story** layout adds an illustrated narrative before the evidence ap
 
 Use **Collapse** on a goal, or **Collapse all**, to reduce the goal list. Status, task counts, and a ready deliverable remain accessible in the collapsed header. The browser remembers your choice across refreshes.
 
+Use **Delete goal** to remove an idle goal and its task history after confirmation. Running work and deliverable generation must finish or stop first. Files already saved in the project workspace are kept.
+
 For existing SSH/CLI connections, see [read-only source bridges](docs/source-bridges.md). Connection settings, shared notes, and generated results stay outside the repository in the private data directory.
 
 CLI credentials remain in their native credential stores and are reused across app restarts. API keys entered in the UI remain in server memory and are cleared on restart. Alternatively configure `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY` in the server environment; those reload on restart. Never commit credentials. API disconnect removes the running process's key. Hosted workspaces use API connections only; local CLI execution is unavailable there. Existing explicit API assignments remain unchanged.

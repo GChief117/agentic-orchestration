@@ -183,6 +183,10 @@ export class ApiClient {
   cancelGoal(id) {
     return this.send("/api/cancel", { id });
   }
+  /** Delete an idle goal's records while keeping its files in the project workspace. */
+  deleteGoal(id) {
+    return this.send(`/api/goals/${encodeURIComponent(id)}/delete`, {});
+  }
   /**
    * Read the artifact referenced by a task receipt.
    * @param {string} taskId Durable task identity, encoded as one path segment.

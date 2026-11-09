@@ -439,6 +439,10 @@ def make_handler(
                         raise ValueError("Goal ID is required")
                     engine.cancel_goal(goal_id)
                     self.send(HTTPStatus.OK, {"ok": True})
+                elif route.startswith("/api/goals/") and route.endswith("/delete"):
+                    goal_id = route.removeprefix("/api/goals/").removesuffix("/delete")
+                    engine.delete_goal(goal_id)
+                    self.send(HTTPStatus.OK, {"ok": True})
                 else:
                     self.send(HTTPStatus.NOT_FOUND, {"error": "Not found"})
             except (ValueError, TypeError, PermissionError) as exc:
