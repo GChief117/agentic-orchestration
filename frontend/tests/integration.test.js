@@ -120,6 +120,7 @@ test(
       3,
     );
     document.querySelector('[data-action="new-goal"]').click();
+    document.querySelector("dialog [data-manual-goal]").click();
     document.querySelector("dialog [data-example]").click();
     document
       .querySelector("dialog form")

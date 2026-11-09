@@ -271,7 +271,7 @@ test("connections start on local CLI, ignore stale API loads, and clear keys whe
   }
 });
 
-test("model task form submits prompt, output path, and token budget", async () => {
+test("model task advanced settings preserve explicit output and token overrides", async () => {
   const dom = new JSDOM("<body></body>");
   try {
     let payload;
@@ -288,6 +288,11 @@ test("model task form submits prompt, output path, and token budget", async () =
         payload = result;
       },
     );
+    const advanced = dialog.querySelector("[data-task-advanced]");
+    assert.equal(advanced.open, false);
+    assert.ok(advanced.querySelector('[data-field="path"]'));
+    assert.ok(advanced.querySelector('[data-field="max_tokens"]'));
+    advanced.open = true;
     assert.match(dialog.textContent, /Requested output tokens/);
     assert.match(dialog.textContent, /not a billing cap/);
     for (const [field, value] of Object.entries({
@@ -310,6 +315,91 @@ test("model task form submits prompt, output path, and token budget", async () =
       prompt: "Write the plan",
       max_tokens: 512,
     });
+  } finally {
+    dom.window.close();
+  }
+});
+
+test("model tasks start with automatic result paths and optional CLI token targets", async () => {
+  const outputPaths = new Set();
+  for (const execution_mode of ["cli", "api"]) {
+    const dom = new JSDOM("<body></body>");
+    try {
+      let payload;
+      const agent = {
+        ...guidedDraft().agents[0],
+        provider: "openai",
+        model: "test-model",
+        execution_mode,
+        capabilities: ["model.generate"],
+      };
+      const dialog = openGoalForm(
+        dom.window.document,
+        { project: { id: "project", name: "Test" }, agents: [agent] },
+        async (result) => {
+          payload = result;
+        },
+      );
+      assert.equal(dialog.querySelector("[data-task-advanced]").open, false);
+      const automaticPath = dialog.querySelector('[data-field="path"]').value;
+      assert.match(automaticPath, /^results\/[a-f0-9]{24}\/task-1\.md$/);
+      assert.equal(outputPaths.has(automaticPath), false);
+      outputPaths.add(automaticPath);
+      assert.equal(dialog.querySelector('[data-field="path"]').required, false);
+      assert.equal(
+        dialog.querySelector('[data-field="max_tokens"]').value,
+        execution_mode === "cli" ? "" : "2048",
+      );
+      for (const [field, value] of Object.entries({
+        "goal-title": "Review the project",
+        title: "Review the project",
+        prompt: "Summarize the project context.",
+      }))
+        dialog.querySelector(`[data-field="${field}"]`).value = value;
+      dialog.querySelector("form").dispatchEvent(
+        new dom.window.Event("submit", { bubbles: true, cancelable: true }),
+      );
+      await tick();
+      assert.deepEqual(payload.tasks[0].parameters, {
+        path: automaticPath,
+        prompt: "Summarize the project context.",
+        ...(execution_mode === "api" ? { max_tokens: 2048 } : {}),
+      });
+    } finally {
+      dom.window.close();
+    }
+  }
+});
+
+test("advanced model settings and automatic task paths survive goal editor changes", async () => {
+  const dom = new JSDOM("<body></body>");
+  try {
+    const agent = {
+      ...guidedDraft().agents[0],
+      provider: "openai",
+      model: "test-model",
+      capabilities: ["model.generate"],
+    };
+    const dialog = openGoalForm(
+      dom.window.document,
+      { project: { id: "project", name: "Test" }, agents: [agent] },
+      async () => {},
+    );
+    dialog.querySelector("[data-task-advanced]").open = true;
+    dialog.querySelector('[data-field="path"]').value = "reports/summary.md";
+    dialog.querySelector('[data-field="max_tokens"]').value = "512";
+    dialog.querySelector("[data-add-task]").click();
+    const rows = [...dialog.querySelectorAll("[data-task]")];
+    assert.equal(rows[0].querySelector("[data-task-advanced]").open, true);
+    assert.equal(
+      rows[0].querySelector('[data-field="path"]').value,
+      "reports/summary.md",
+    );
+    assert.equal(rows[0].querySelector('[data-field="max_tokens"]').value, "512");
+    assert.match(
+      rows[1].querySelector('[data-field="path"]').value,
+      /^results\/[a-f0-9]{24}\/task-2\.md$/,
+    );
   } finally {
     dom.window.close();
   }

@@ -2,10 +2,10 @@ import { escapeHtml as e } from "./domain.js";
 
 /**
  * Render an escaped, labeled text, numeric, or multiline form field.
- * @returns {string} Markup; options control required state, rows, and helper text.
+ * @returns {string} Markup; options control required state, rows, placeholder, and helper text.
  */
 export function input(label, field, value = "", options = {}) {
-  const attrs = `data-field="${field}" aria-label="${e(label)}" ${options.required ? "required" : ""}`;
+  const attrs = `data-field="${field}" aria-label="${e(label)}" ${options.required ? "required" : ""}${options.placeholder ? ` placeholder="${e(options.placeholder)}"` : ""}`;
   const control = options.textarea
     ? `<textarea ${attrs} rows="${options.rows || 3}" ${options.required ? "maxlength=4000" : ""}>${e(value)}</textarea>`
     : `<input ${attrs} type="${options.number ? "number" : "text"}" value="${e(value)}" ${options.number ? 'min="1" step="1"' : 'maxlength="120"'}>`;

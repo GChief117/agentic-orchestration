@@ -198,6 +198,34 @@ class CLIRuntimeTests(unittest.TestCase):
         self.assertIn("command(*)", settings["permissions"]["deny"])
         self.assertIn("read_file(*)", settings["permissions"]["deny"])
 
+    def test_token_target_is_optional_and_explicit_targets_remain_validated(self):
+        prompts = []
+
+        def run(args, stdin, *_rest):
+            prompts.append(stdin.decode())
+            output = b'{"type":"result","subtype":"success","result":"Done"}'
+            return subprocess.CompletedProcess(args, 0, output, b"")
+
+        runtime = CLIRuntime(runner=run)
+        with patch(
+            "orchestration.cli_models.shutil.which", return_value="/tool/claude"
+        ):
+            result = runtime.generate("claude", "default", "Instructions", "Task")
+            self.assertTrue(result["complete"])
+            self.assertFalse(result["token_limit_enforced"])
+            self.assertNotIn("Return at most", prompts[-1])
+            self.assertNotIn("output tokens", prompts[-1])
+            runtime.generate("claude", "default", "Instructions", "Task", 512)
+            self.assertIn("Return at most 512 output tokens.", prompts[-1])
+            for invalid in (0, True, False, -1, 8193, "512"):
+                with self.subTest(target=invalid), self.assertRaisesRegex(
+                    ValueError, "token target"
+                ):
+                    runtime.generate(
+                        "claude", "default", "Instructions", "Task", invalid
+                    )
+            self.assertEqual(len(prompts), 2)
+
     def test_incomplete_results_are_not_accepted_and_codex_tools_are_rejected(self):
         self.assertFalse(
             CLIRuntime._parse(

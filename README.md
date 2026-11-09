@@ -80,8 +80,10 @@ Discovery routes use the same local session authorization as other APIs: `GET /a
 ## Model execution and collaboration
 
 1. Open **Model connections → Local CLI**. Use your saved Codex CLI, Claude Code, or Antigravity (`agy`) account. The screen checks sign-in automatically and updates when confirmed. Alternatively connect a provider under **API keys**.
-2. Open a project's team editor. Select an agent, choose **Run this agent with**, **Model provider**, and **Model**. Local CLI is first and is the default for new local teams and imports. **CLI default** uses the tool's default model. Supported Codex models also offer **Execution speed**: Standard, Fast, or Ultrafast, based on the native model catalog. Connect peers by dragging a card’s **+ handle** onto another agent, or choose **Connect agents** and click two cards.
-3. Add a goal with **Run model task** steps. Set each prompt, output artifact path, and output tokens. CLI output tokens are a requested target, not a guaranteed usage cap. Add dependencies wherever one step must wait for another.
+2. Open a project's team editor. Choose the **Team model** once and apply it to the entire team, then adjust individual agents only when needed. Local CLI is first and is the default for new local teams and imports. **CLI default** uses the tool's default model. Supported Codex models also offer Standard, Fast, or Ultrafast execution. Connect peers by dragging a card’s **+ handle** onto another agent, or choose **Connect agents** and click two cards.
+3. Open **New goal**, describe the outcome, and attach relevant project files. **Plan with coordinator** uses the saved chart—roles, instructions, reporting lines, and peer connections—to propose task assignments and handoffs. Review or edit that plan, then choose **Start goal**. Planning does not start the proposed tasks.
+
+You can also choose **Define tasks manually**. Result filenames are supplied automatically; optional output settings are under **Advanced settings**. CLI tasks have no output-token target unless you set one. If the chart changes after planning, generate a new plan before starting.
 
 The scheduler enforces task order, project/agent capacity, and file conflicts. Model tasks receive explicitly selected source files, the project charter, their role/instructions, team roster, and available completed outputs from explicit dependencies and collaborating agents. Dashed chart links show collaboration; solid links show reporting. Collaboration does not make tasks wait automatically. Only task dependencies impose execution order.
 

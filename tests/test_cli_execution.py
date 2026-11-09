@@ -34,7 +34,7 @@ class FakeCLI:
         speed="standard",
     ):
         """Return distinct provider output so downstream handoffs can be checked."""
-        self.calls.append((provider, model, system, prompt, speed))
+        self.calls.append((provider, model, system, prompt, speed, max_tokens))
         return {
             "text": provider + " completed its assigned work",
             "complete": True,
@@ -106,6 +106,7 @@ class CLIExecutionTests(unittest.TestCase):
                 self.assertIn("gemini completed", runtime.calls[1][3])
                 self.assertIn("openai completed", runtime.calls[2][3])
                 self.assertEqual(runtime.calls[1][4], "ultrafast")
+                self.assertTrue(all(call[5] is None for call in runtime.calls))
                 self.assertIn(definition["charter"]["objective"], runtime.calls[0][2])
                 for task in state["tasks"]:
                     self.assertEqual(task["receipt"]["execution_mode"], "cli")

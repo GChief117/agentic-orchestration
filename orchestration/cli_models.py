@@ -249,16 +249,16 @@ class CLIRuntime:
         model,
         system,
         prompt,
-        max_tokens,
+        max_tokens=None,
         *,
         cancelled=None,
         speed="standard",
     ):
-        """Run one native CLI text turn and require a complete, bounded result."""
+        """Run a bounded CLI turn, optionally requesting a response token target."""
         info = self._provider(provider)
         model = model_name(model)
         self.validate_speed(provider, model, speed)
-        if (
+        if max_tokens is not None and (
             not isinstance(max_tokens, int)
             or isinstance(max_tokens, bool)
             or not 1 <= max_tokens <= 8192
@@ -274,7 +274,12 @@ class CLIRuntime:
         text = (
             "Complete this text-only task using only the supplied context. "
             "Do not call tools, read other files, or execute commands. "
-            f"Return at most {max_tokens} output tokens.\n\n"
+            + (
+                f"Return at most {max_tokens} output tokens."
+                if max_tokens is not None
+                else ""
+            )
+            + "\n\n"
             + json.dumps({"instructions": system, "task": prompt}, ensure_ascii=False)
         )
         with tempfile.TemporaryDirectory(prefix="orchestration-cli-turn-") as directory:

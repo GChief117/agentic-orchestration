@@ -15,16 +15,37 @@ export { openProjectForm } from "./project-form.js";
  * @param {function(object): Promise<*>} onSubmit Persists the validated task graph.
  * @returns {HTMLDialogElement} Mounted task editor.
  */
-export function openGoalForm(document, view, onSubmit, loadSourceFiles = null) {
+export function openGoalForm(
+  document,
+  view,
+  onSubmit,
+  loadSourceFiles = null,
+  onPlan = null,
+) {
   const controller = mountDialog(document, "Define a goal", view.project.name);
   const { dialog } = controller;
   const content = dialog.querySelector("[data-content]");
+  const resultId = new Uint8Array(12);
+  document.defaultView.crypto.getRandomValues(resultId);
+  const resultNamespace = [...resultId]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
   let sourceFiles = [],
     sourceError = "",
     sourceTruncated = false;
   let sourcesLoading = Boolean(view.project.source_path && loadSourceFiles);
   let title = "",
     nextId = 1;
+  const planners = view.agents.filter(
+    (agent) => agent.provider && agent.model && agent.capabilities.includes("model.generate"),
+  );
+  let stage = onPlan ? "goal" : "tasks";
+  let goal = "";
+  let coordinator =
+    (planners.find((agent) => !agent.reports_to) || planners[0])?.key || "";
+  let planSummary = "";
+  let teamRevision = null;
+  const goalSources = { source_files: [], source_filter: "" };
   /**
    * Create a task draft with a stable local ID and the first available agent/action.
    */
@@ -41,42 +62,165 @@ export function openGoalForm(document, view, onSubmit, loadSourceFiles = null) {
       prompt: "",
       source_files: [],
       source_filter: "",
-      max_tokens: "2048",
+      max_tokens: "",
+      advanced_open: false,
       compare: false,
       depends_on: [],
     };
   }
   let tasks = [blankTask()];
+  /** Save the goal and lead selection before loading files or leaving the first step. */
+  function captureGoal() {
+    goal = value(content, "goal");
+    title = value(content, "goal-title");
+    coordinator = value(content, "coordinator");
+  }
+  /** Use the first line as a concise title when the owner leaves it optional. */
+  function suggestedTitle() {
+    return goal.trim().split(/\r?\n/)[0].slice(0, 120);
+  }
+  /** Turn a validated coordinator plan into editable drafts without starting tasks. */
+  function planDrafts(plan) {
+    if (!Array.isArray(plan.tasks) || !plan.tasks.length)
+      throw new Error(
+        "The coordinator returned no tasks. Try planning the goal again.",
+      );
+    if (typeof plan.team_revision !== "string" || !plan.team_revision)
+      throw new Error("The plan could not be linked to this team. Try planning again.");
+    return plan.tasks.map((task) => ({
+      id: task.id,
+      title: task.title,
+      agent: task.agent,
+      capability: task.capability,
+      path: task.parameters?.path || "",
+      prompt: task.parameters?.prompt || "",
+      content: task.parameters?.content || "",
+      expected: task.parameters?.expected || "",
+      max_tokens: task.parameters?.max_tokens == null
+        ? ""
+        : String(task.parameters.max_tokens),
+      source_files: [...(task.parameters?.source_files || [])],
+      source_filter: "",
+      advanced_open: false,
+      compare: task.parameters?.expected !== undefined,
+      depends_on: [...(task.depends_on || [])],
+    }));
+  }
+  /** Ask the selected coordinator for a plan, then let the owner review it. */
+  async function requestPlan(event) {
+    event.preventDefault();
+    if (controller.pending) return;
+    captureGoal();
+    if (!goal.trim()) {
+      showError(dialog, new Error("Describe the outcome you want to achieve."));
+      return;
+    }
+    if (!coordinator) {
+      showError(
+        dialog,
+        new Error("Assign a model to a team member before asking for a plan."),
+      );
+      return;
+    }
+    let planned = false;
+    let planningError = null;
+    controller.busy(true);
+    try {
+      const plan = await onPlan({
+        goal: goal.trim(),
+        coordinator,
+        source_files: [...goalSources.source_files],
+      });
+      tasks = planDrafts(plan);
+      nextId = Math.max(
+        0,
+        ...tasks.map((task) => Number(task.id.match(/^task-(\d+)$/)?.[1]) || 0),
+      ) + 1;
+      planSummary = typeof plan.summary === "string" ? plan.summary : "";
+      teamRevision = plan.team_revision;
+      if (plan.coordinator_key) coordinator = plan.coordinator_key;
+      title = title.trim() || suggestedTitle();
+      stage = "tasks";
+      planned = true;
+    } catch (error) {
+      planningError = error;
+    } finally {
+      controller.busy(false);
+    }
+    if (dialog.isConnected) {
+      if (planned) render();
+      else if (planningError) {
+        renderGoal();
+        showError(dialog, planningError);
+      }
+    }
+  }
+  /** Start with the outcome and chart, leaving task details for the review step. */
+  function renderGoal() {
+    content.innerHTML = `<form data-goal-intake><div class="dialog-body"><p>Describe the outcome you want. Your coordinator will propose tasks for the team in your organization chart. You review the plan before any task starts.</p>${input("What should your team accomplish?", "goal", goal, { required: true, textarea: true, rows: 6, hint: "Include the result you want and anything the team should consider." })}${input("Goal title (optional)", "goal-title", title)}<label class="field"><span>Planning coordinator</span><select data-field="coordinator" aria-label="Planning coordinator">${planners.map((agent) => `<option value="${e(agent.key)}" ${agent.key === coordinator ? "selected" : ""}>${e(agent.name)} · ${e(agent.role)}</option>`).join("")}</select></label>${!planners.length ? '<div class="notice info">Assign a provider and model to at least one team member in the organization chart before planning.</div>' : ""}<section data-goal-sources>${sourcePicker(goalSources, true)}</section><div class="notice danger hidden" data-error role="alert"></div></div><footer class="dialog-footer"><button class="text-button" type="button" data-manual-goal>Define tasks manually</button><button class="button primary" type="submit" data-label="Plan with coordinator" ${planners.length ? "" : "disabled"}>Plan with coordinator</button></footer></form>`;
+    content.querySelector("form").onsubmit = requestPlan;
+    content.querySelector("[data-manual-goal]").onclick = () => {
+      captureGoal();
+      title = title.trim() || suggestedTitle();
+      teamRevision = null;
+      planSummary = "";
+      const task = blankTask();
+      const lead = view.agents.find((agent) => agent.key === coordinator);
+      if (lead) {
+        task.agent = lead.key;
+        task.capability = lead.capabilities.includes("model.generate")
+          ? "model.generate"
+          : lead.capabilities[0];
+      }
+      task.title = title;
+      task.prompt = goal;
+      task.source_files = [...goalSources.source_files];
+      task.source_filter = goalSources.source_filter;
+      tasks = [task];
+      stage = "tasks";
+      render();
+    };
+  }
   /**
    * Collect task rows, comparison fields, and dependency selections from the goal editor.
    */
   function read() {
     title = value(content, "goal-title");
-    return [...content.querySelectorAll("[data-task]")].map((row) => ({
-      id: row.dataset.task,
-      ...Object.fromEntries(
-        [
-          "title",
-          "agent",
-          "capability",
-          "path",
-          "content",
-          "expected",
-          "prompt",
-          "max_tokens",
-        ].map((field) => [field, value(row, field)]),
-      ),
-      source_files: [
-        ...(tasks.find((task) => task.id === row.dataset.task)?.source_files ||
-          []),
-      ],
-      source_filter:
-        tasks.find((task) => task.id === row.dataset.task)?.source_filter || "",
-      compare: Boolean(row.querySelector('[data-field="compare"]')?.checked),
-      depends_on: [...row.querySelectorAll("[data-dependency]:checked")].map(
-        (checkbox) => checkbox.value,
-      ),
-    }));
+    return [...content.querySelectorAll("[data-task]")].map((row) => {
+      const task = {
+        id: row.dataset.task,
+        ...Object.fromEntries(
+          [
+            "title",
+            "agent",
+            "capability",
+            "path",
+            "content",
+            "expected",
+            "prompt",
+            "max_tokens",
+          ].map((field) => [field, value(row, field)]),
+        ),
+        source_files: [
+          ...(tasks.find((task) => task.id === row.dataset.task)?.source_files ||
+            []),
+        ],
+        source_filter:
+          tasks.find((task) => task.id === row.dataset.task)?.source_filter || "",
+        advanced_open: Boolean(row.querySelector("[data-task-advanced]")?.open),
+        compare: Boolean(row.querySelector('[data-field="compare"]')?.checked),
+        depends_on: [...row.querySelectorAll("[data-dependency]:checked")].map(
+          (checkbox) => checkbox.value,
+        ),
+      };
+      if (task.capability === "model.generate" && !task.path.trim())
+        task.path = resultPath(task);
+      return task;
+    });
+  }
+  /** Give each model task a stable result filename without requiring a manual path. */
+  function resultPath(task) {
+    return `results/${resultNamespace}/${task.id}.md`;
   }
   /** Render only matching filenames; file contents are not fetched by this picker. */
   function sourceOptions(task) {
@@ -96,9 +240,9 @@ export function openGoalForm(document, view, onSubmit, loadSourceFiles = null) {
     );
   }
   /** Offer explicit read-only attachments from the selected project's source folder. */
-  function sourcePicker(task) {
+  function sourcePicker(task, planning = false) {
     if (!view.project.source_path) return "";
-    return `<details class="source-picker"><summary>Project source files · <span data-source-count>${(task.source_files || []).length}</span> selected</summary><p class="muted">${e(view.project.source_path)}</p><p>Choose up to 8 files. Their contents are sent to this agent’s provider when you start the task. Original files are not modified.</p>${sourcesLoading ? '<p class="muted">Loading filenames…</p>' : sourceError ? `<p role="alert">${e(sourceError)}</p>` : `<input aria-label="Filter project files" data-source-filter placeholder="Filter filenames" value="${e(task.source_filter || "")}"><div class="source-options" data-source-options>${sourceOptions(task)}</div><small>${sourceFiles.length} available files. Up to 100 matches shown.${sourceTruncated ? " Listing was limited; narrow the project folder if needed." : ""}</small>`}</details>`;
+    return `<details class="source-picker"><summary>Project source files · <span data-source-count>${(task.source_files || []).length}</span> selected</summary><p class="muted">${e(view.project.source_path)}</p><p>${planning ? "Choose up to 8 files to share with the planning coordinator and the proposed tasks." : "Choose up to 8 files. Their contents are sent to this agent’s provider when you start the task."} Original files are not modified.</p>${sourcesLoading ? '<p class="muted">Loading filenames…</p>' : sourceError ? `<p role="alert">${e(sourceError)}</p>` : `<input aria-label="Filter project files" data-source-filter placeholder="Filter filenames" value="${e(task.source_filter || "")}"><div class="source-options" data-source-options>${sourceOptions(task)}</div><small>${sourceFiles.length} available files. Up to 100 matches shown.${sourceTruncated ? " Listing was limited; narrow the project folder if needed." : ""}</small>`}</details>`;
   }
   /** Explain the difference between enforced API limits and a CLI output request. */
   function tokenLimitInput(agent, task) {
@@ -106,27 +250,33 @@ export function openGoalForm(document, view, onSubmit, loadSourceFiles = null) {
     return input(
       cli ? "Requested output tokens" : "Maximum output tokens",
       "max_tokens",
-      task.max_tokens || "2048",
+      cli ? task.max_tokens || "" : task.max_tokens || "2048",
       {
         number: true,
+        placeholder: cli ? "Use CLI default" : undefined,
         hint: cli
-          ? "The CLI may use a different number of tokens. Output is limited to 64 KiB and execution to 120 seconds; this is not a billing cap."
+          ? "Optional. Leave blank for the CLI’s default output length. A requested value is not a billing cap."
           : undefined,
       },
     );
+  }
+  /** Keep optional result-file and output controls outside the main task-writing flow. */
+  function modelSettings(agent, task) {
+    return `<details class="advanced-settings" data-task-advanced ${task.advanced_open ? "open" : ""}><summary>Advanced settings</summary>${input("Save result as", "path", task.path || resultPath(task), { hint: "The generated result is saved here inside this project's output folder. This is not a source file to read." })}${tokenLimitInput(agent, task)}</details>`;
   }
   /**
    * Render task editors, constrain action choices by agent, and bind graph editing.
    */
   function render() {
-    content.innerHTML = `<form data-goal-form><div class="dialog-body"><div class="notice info">Tasks follow their dependencies and assigned agent settings. Model tasks use the assigned Local CLI or API connection and may consume your provider usage allowance.</div>${input("Goal title", "goal-title", title, { required: true })}<div class="form-section-heading"><h3>Tasks & dependencies</h3><button class="text-button" type="button" data-example>Use release example</button></div>${tasks
+    if (stage === "goal") return renderGoal();
+    content.innerHTML = `<form data-goal-form><div class="dialog-body">${planSummary ? `<div class="notice info"><strong>Coordinator’s plan</strong><p>${e(planSummary)}</p><span>Review and adjust the tasks below before starting the goal.</span></div>` : '<div class="notice info">Define the tasks your team should run. Each task follows its dependencies and the settings saved for its assigned agent.</div>'}${input("Goal title", "goal-title", title, { required: true })}<div class="form-section-heading"><h3>Tasks & dependencies</h3><button class="text-button" type="button" data-example>Use release example</button></div>${tasks
       .map((task, index) => {
         const agent =
           view.agents.find((item) => item.key === task.agent) || view.agents[0];
         const capabilities = agent.capabilities;
         if (!capabilities.includes(task.capability))
           task.capability = capabilities[0];
-        return `<fieldset class="task-editor" data-task="${e(task.id)}"><legend>Step ${index + 1} · ${e(task.id)}</legend>${input("Task title", "title", task.title, { required: true })}<div class="form-grid"><label class="field"><span>Assigned agent</span><select aria-label="Assigned agent" data-field="agent">${view.agents.map((candidate) => `<option value="${e(candidate.key)}" ${agent.key === candidate.key ? "selected" : ""}>${e(candidate.name)} · ${e(candidate.role)}</option>`).join("")}</select></label><label class="field"><span>Action</span><select aria-label="Action" data-field="capability">${capabilities.map((cap) => `<option value="${e(cap)}" ${task.capability === cap ? "selected" : ""}>${e(ACTIONS[cap]?.label || cap)}</option>`).join("")}</select></label></div>${task.capability.startsWith("files.") || task.capability === "model.generate" ? input("Project-relative file path", "path", task.path, { required: true, hint: "For example: release/checklist.txt" }) : '<p class="muted">Checks the configured Python runtime on the local target.</p>'}${task.capability === "model.generate" ? `<p class="muted">${agent.execution_mode === "cli" ? "Local CLI" : "API key"} · ${e(agent.provider || "No provider")} · ${e(agent.model || "No model selected")}</p>${input("Task prompt", "prompt", task.prompt || "", { required: true, textarea: true, rows: 5 })}${tokenLimitInput(agent, task)}${sourcePicker(task)}` : ""}${task.capability === "files.write" ? input("File contents", "content", task.content, { textarea: true }) : ""}${task.capability === "files.inspect" ? `<label class="checkbox-line"><input type="checkbox" data-field="compare" ${task.compare ? "checked" : ""}> Compare exact contents</label>${task.compare ? input("Expected contents", "expected", task.expected, { textarea: true }) : '<p class="muted">Checks that the file is readable and records its digest.</p>'}` : ""}<div class="dependency-picker"><span class="label">Wait for these tasks to be verified</span>${
+        return `<fieldset class="task-editor" data-task="${e(task.id)}"><legend>Step ${index + 1} · ${e(task.id)}</legend>${input("Task title", "title", task.title, { required: true })}<div class="form-grid"><label class="field"><span>Assigned agent</span><select aria-label="Assigned agent" data-field="agent">${view.agents.map((candidate) => `<option value="${e(candidate.key)}" ${agent.key === candidate.key ? "selected" : ""}>${e(candidate.name)} · ${e(candidate.role)}</option>`).join("")}</select></label><label class="field"><span>Action</span><select aria-label="Action" data-field="capability">${capabilities.map((cap) => `<option value="${e(cap)}" ${task.capability === cap ? "selected" : ""}>${e(ACTIONS[cap]?.label || cap)}</option>`).join("")}</select></label></div>${task.capability.startsWith("files.") ? input("Project-relative file path", "path", task.path, { required: true, hint: "For example: release/checklist.txt" }) : task.capability === "terminal.python_version" ? '<p class="muted">Checks the configured Python runtime on the local target.</p>' : ""}${task.capability === "model.generate" ? `<p class="muted">${agent.execution_mode === "cli" ? "Local CLI" : "API key"} · ${e(agent.provider || "No provider")} · ${e(agent.model || "No model selected")}</p>${input("Task prompt", "prompt", task.prompt || "", { required: true, textarea: true, rows: 5 })}${sourcePicker(task)}${modelSettings(agent, task)}` : ""}${task.capability === "files.write" ? input("File contents", "content", task.content, { textarea: true }) : ""}${task.capability === "files.inspect" ? `<label class="checkbox-line"><input type="checkbox" data-field="compare" ${task.compare ? "checked" : ""}> Compare exact contents</label>${task.compare ? input("Expected contents", "expected", task.expected, { textarea: true }) : '<p class="muted">Checks that the file is readable and records its digest.</p>'}` : ""}<div class="dependency-picker"><span class="label">Wait for these tasks to be verified</span>${
           tasks
             .filter((other) => other.id !== task.id)
             .map(
@@ -138,10 +288,17 @@ export function openGoalForm(document, view, onSubmit, loadSourceFiles = null) {
       })
       .join(
         "",
-      )}<button class="button" type="button" data-add-task>${icon("plus")} Add task</button><div class="notice danger hidden" data-error role="alert"></div></div><footer class="dialog-footer"><span>Dependencies, agent limits, and project capacity are enforced by the backend.</span><button class="button primary" type="submit" data-label="Start goal">Start goal</button></footer></form>`;
+      )}<button class="button" type="button" data-add-task>${icon("plus")} Add task</button><div class="notice danger hidden" data-error role="alert"></div></div><footer class="dialog-footer">${onPlan ? '<button class="button" type="button" data-edit-goal>← Edit goal</button>' : '<span>Dependencies, agent limits, and project capacity are enforced by the backend.</span>'}<button class="button primary" type="submit" data-label="Start goal">Start goal</button></footer></form>`;
+    content.querySelector("[data-edit-goal]")?.addEventListener("click", () => {
+      tasks = read();
+      stage = "goal";
+      render();
+    });
     content.querySelector("[data-example]").onclick = () => {
       try {
         tasks = starterTasks(view.agents);
+        planSummary = "";
+        teamRevision = null;
         title = "Prepare a verified release";
         nextId = 4;
         render();
@@ -181,6 +338,7 @@ export function openGoalForm(document, view, onSubmit, loadSourceFiles = null) {
       try {
         tasks = read();
         const payload = goalPayload(view.project.id, title, tasks, view.agents);
+        if (teamRevision != null) payload.team_revision = teamRevision;
         controller.busy(true);
         await onSubmit(payload);
         dialog.close();
@@ -193,15 +351,19 @@ export function openGoalForm(document, view, onSubmit, loadSourceFiles = null) {
   }
   content.addEventListener("input", (event) => {
     if (!event.target.matches("[data-source-filter]")) return;
-    const row = event.target.closest("[data-task]");
-    const task = tasks.find((item) => item.id === row.dataset.task);
+    const row = event.target.closest("[data-task], [data-goal-sources]");
+    const task = row.hasAttribute("data-goal-sources")
+      ? goalSources
+      : tasks.find((item) => item.id === row.dataset.task);
     task.source_filter = event.target.value;
     row.querySelector("[data-source-options]").innerHTML = sourceOptions(task);
   });
   content.addEventListener("change", (event) => {
     if (!event.target.matches("[data-source-file]")) return;
-    const row = event.target.closest("[data-task]");
-    const task = tasks.find((item) => item.id === row.dataset.task);
+    const row = event.target.closest("[data-task], [data-goal-sources]");
+    const task = row.hasAttribute("data-goal-sources")
+      ? goalSources
+      : tasks.find((item) => item.id === row.dataset.task);
     const paths = new Set(task.source_files || []);
     if (event.target.checked) paths.add(event.target.value);
     else paths.delete(event.target.value);
@@ -228,11 +390,12 @@ export function openGoalForm(document, view, onSubmit, loadSourceFiles = null) {
       })
       .finally(() => {
         sourcesLoading = false;
-        if (!dialog.isConnected) return;
+        if (!dialog.isConnected || controller.pending) return;
         const active = document.activeElement;
         const field = active?.dataset.field;
         const rowId = active?.closest("[data-task]")?.dataset.task;
-        tasks = read();
+        if (stage === "goal") captureGoal();
+        else tasks = read();
         render();
         const scope = rowId
           ? [...content.querySelectorAll("[data-task]")].find(

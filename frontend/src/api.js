@@ -87,6 +87,10 @@ export class ApiClient {
   projectFiles(projectId) {
     return this.send(`/api/projects/${encodeURIComponent(projectId)}/files`);
   }
+  /** Ask a project's coordinator to propose tasks without executing the plan. */
+  planGoal(projectId, goal) {
+    return this.send(`/api/projects/${encodeURIComponent(projectId)}/plan`, goal);
+  }
   /** List API connection readiness and cached model choices without secrets. */
   models() {
     return this.send("/api/models");

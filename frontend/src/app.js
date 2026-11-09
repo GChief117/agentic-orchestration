@@ -148,6 +148,7 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
         notify("Goal submitted. Eligible tasks can now run.");
       },
       () => api.projectFiles(view.project.id),
+      (goal) => api.planGoal(view.project.id, goal),
     );
   }
   /** Open local discovery without importing anything until the user selects projects. */

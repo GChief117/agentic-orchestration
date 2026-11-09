@@ -8,6 +8,7 @@ The repository includes a small working backend foundation. A separate JavaScrip
 | --- | --- | --- |
 | `orchestration/projects.py` | Validate project charters, fixed team rosters, agent roles, and reporting hierarchies. | Connection policy |
 | `orchestration/plans.py` | Validate task IDs, dependencies, capabilities, inputs, and canonical resource claims before submission. | Connection policy |
+| `orchestration/planning.py` | Ask a chart coordinator for a reviewable goal plan; validate ownership, handoffs, and chart revision before execution. | Model runtimes and plan validation |
 | `orchestration/storage.py` | Store goals, tasks, attempts, receipts, and events in SQLite; hold a process-level data-directory lock. | SQLite and filesystem |
 | `orchestration/scheduling.py` | Pure functions for dependency readiness, fair dispatch among goals, resource conflicts, and goal state. | Task records only |
 | `orchestration/engine.py` | Coordinate submission, scheduling, worker lifecycle, cancellation, and persistence. | Plans, store, scheduler, executor |
@@ -68,6 +69,7 @@ The service writes a private bearer credential to `.runtime/api-token` with mode
 | POST | `/api/projects` | Body shaped like `examples/greenfield_project.json`; initializes a charter and assigned team. |
 | GET | `/api/projects` | Persistent project definitions and assigned agent records. |
 | POST | `/api/projects/{id}/team` | Replace an idle project’s roster and concurrency settings; keep existing agent IDs by key. |
+| POST | `/api/projects/{id}/plan` | Propose tasks from a goal, selected source files, and the saved chart; returns a plan and chart revision without starting tasks. |
 | POST | `/api/goals` | Body shaped like `examples/backend_goal.json`, plus `project_id`; returns the created goal ID. |
 | GET | `/api/state` | Projects, agents, goals, tasks, attempts, events, and execution capacity. |
 | POST | `/api/cancel` | `{ "id": "goal-id" }`; requests cancellation. |

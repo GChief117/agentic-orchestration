@@ -223,12 +223,15 @@ export function goalPayload(projectId, title, drafts, agents) {
           throw new Error("Choose at most eight source files per task.");
         parameters.source_files = [...draft.source_files];
       }
-      parameters.max_tokens = positive(
-        draft.max_tokens || "2048",
-        "Output token limit",
-      );
-      if (parameters.max_tokens > 8192)
-        throw new Error("Use an output token limit of 8192 or less.");
+      const requestedTokens = String(draft.max_tokens ?? "").trim();
+      if (agent.execution_mode !== "cli" || requestedTokens) {
+        parameters.max_tokens = positive(
+          requestedTokens || "2048",
+          "Output token limit",
+        );
+        if (parameters.max_tokens > 8192)
+          throw new Error("Use an output token limit of 8192 or less.");
+      }
     }
     if (draft.capability === "files.write")
       parameters.content = draft.content ?? "";

@@ -14,6 +14,27 @@ In a local workspace, **Model connections** opens on the **Local CLI** tab, with
 sign-in directly. Hosted workspaces expose only API connections and reject CLI
 tasks before dispatch.
 
+## Goal planning from the chart
+
+The team editor can apply one model configuration to every agent; individual
+agents can then be changed separately. Applying a model preserves roles,
+instructions, reporting lines, peer links, and agent identities.
+
+Goal creation begins with the desired outcome and optional selected source
+files. `POST /api/projects/{id}/plan` sends the saved organization chart to a
+model-enabled coordinator. Its context includes every agent's role,
+instructions, responsibilities, permitted capabilities, reporting manager,
+collaborators, model settings, and concurrency. The coordinator proposes a JSON
+task graph that the backend validates against those exact agents and their
+model readiness, including dependency cycles and unique result paths.
+
+The proposed plan is shown for review; no tasks are queued until **Start goal**.
+Plans include a chart revision. Submission rejects a stale revision after any
+relevant chart or charter edit. Selected source files accompany the planner and
+its proposed model tasks. Planned outputs use a unique result namespace so
+later goals do not overwrite earlier generated results. The manual task editor
+remains available as an alternative.
+
 CLI credentials stay in the provider's persistent credential store on the same
 computer. The app never copies them into its database, project files, or browser
 storage. While the CLI tab is open it checks sign-in about every three seconds;
@@ -35,9 +56,12 @@ recorded in execution receipts. The native default model offers Standard until
 a model with explicit tier support is selected. See the
 [Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
 
-A `model.generate` task requires a prompt, a project-relative output path, and
-an output token value of 1–8192 (default 2048). APIs enforce that token limit;
-CLIs treat it as a requested target and may use more tokens. Each call uses the selected
+A `model.generate` task requires a prompt and a project-relative output path.
+The goal editor supplies a result filename automatically; it can be changed
+under **Advanced settings**. API tasks use an output token limit of 1–8192
+(default 2048). CLI tasks use their native output behavior unless an optional
+target is entered under **Advanced settings**; that target is a request, not
+an enforced limit, and the CLI may use more tokens. Each call uses the selected
 agent's instructions, project charter, roster, and completed handoffs. Explicit
 dependencies take priority over recent collaborating-agent outputs; at most 20
 handoffs and 24,000 result characters are included. Individual results are

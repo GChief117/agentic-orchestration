@@ -345,6 +345,20 @@ def make_handler(
                 elif route == "/api/projects":
                     project_id = engine.create_project(data)
                     self.send(HTTPStatus.CREATED, {"id": project_id})
+                elif route.startswith("/api/projects/") and route.endswith("/plan"):
+                    project_id = route.removeprefix("/api/projects/").removesuffix(
+                        "/plan"
+                    )
+                    self.send(
+                        HTTPStatus.OK,
+                        engine.plan_goal(
+                            project_id,
+                            data.get("goal"),
+                            data.get("coordinator"),
+                            data.get("source_files"),
+                            allow_cli=local_features,
+                        ),
+                    )
                 elif route.startswith("/api/projects/") and route.endswith("/team"):
                     project_id = route.removeprefix("/api/projects/").removesuffix(
                         "/team"
@@ -370,6 +384,7 @@ def make_handler(
                         data.get("title"),
                         data.get("tasks"),
                         allow_cli=local_features,
+                        expected_team_revision=data.get("team_revision"),
                     )
                     self.send(HTTPStatus.CREATED, {"id": goal_id})
                 elif route == "/api/cancel":

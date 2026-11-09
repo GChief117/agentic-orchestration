@@ -13,6 +13,7 @@ from .storage import Store
 from .providers import ProviderConnections
 from .models import ModelRuntime
 from .cli_models import CLIRuntime
+from .planning import propose_goal, team_revision
 from .sources import list_source_files
 from .discovery import ProjectDiscovery, imported_definition
 
@@ -182,7 +183,19 @@ class Engine:
                 self.store.update_team(project_id, definition)
         return project_id
 
-    def submit(self, project_id, title, tasks, *, allow_cli=True):
+    def plan_goal(
+        self, project_id, goal, coordinator=None, source_files=None, *, allow_cli=True
+    ):
+        """Ask a configured chart agent for a reviewable task plan without starting it."""
+        with self.lock:
+            self._require_open()
+        return propose_goal(
+            self, project_id, goal, coordinator, source_files, allow_cli=allow_cli
+        )
+
+    def submit(
+        self, project_id, title, tasks, *, allow_cli=True, expected_team_revision=None
+    ):
         """Validate and atomically queue a goal in an existing project.
 
         project_id identifies the team; tasks name its agent keys and dependencies.
@@ -196,6 +209,13 @@ class Engine:
             self._require_open()
             project = self.store.project(project_id)
             team = self.store.agents(project_id)
+            if expected_team_revision is not None:
+                if not isinstance(
+                    expected_team_revision, str
+                ) or expected_team_revision != team_revision(project, team):
+                    raise ValueError(
+                        "The team or project changed after planning. Review a new plan before starting."
+                    )
             definitions = parse_tasks(
                 tasks,
                 self.connection,
@@ -321,6 +341,9 @@ class Engine:
                                 "key": peer["key"],
                                 "name": peer["name"],
                                 "role": peer["role"],
+                                "instructions": peer["instructions"],
+                                "responsibilities": peer["responsibilities"],
+                                "capabilities": peer["capabilities"],
                                 "reports_to": peer["reports_to"],
                                 "collaborators": peer.get("collaborators", []),
                             }

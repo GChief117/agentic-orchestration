@@ -85,6 +85,8 @@ export function mountOrganizationEditor({
       Array.isArray(cli?.model_speed_modes?.[agent.model])
     ) normalizeSpeed(agent);
   });
+  let appliedTeamModel = commonTeamModel();
+  let teamModel = { ...(appliedTeamModel || suggestedTeamModel()) };
 
   /** Publish an immutable draft snapshot without committing it to the backend. */
   function publish() {
@@ -133,6 +135,58 @@ export function mountOrganizationEditor({
   /** Return the currently selected editable role, or null for the project owner. */
   function current() {
     return agents.find((agent) => agent.key === selected);
+  }
+  /** Copy only model settings so shared choices cannot overwrite an agent's role. */
+  function modelSettings(agent) {
+    return {
+      execution_mode: agent.execution_mode || (localTools ? "cli" : "api"),
+      provider: agent.provider || "",
+      model: agent.model || "",
+      execution_speed: agent.execution_speed || "standard",
+    };
+  }
+  /** Infer an existing common model without changing any per-agent settings. */
+  function commonTeamModel() {
+    if (!agents.length) return null;
+    const first = modelSettings(agents[0]);
+    if (!first.provider || !first.model) return null;
+    return agents.every((agent) => {
+      const settings = modelSettings(agent);
+      return Object.keys(first).every((key) => first[key] === settings[key]);
+    }) ? first : null;
+  }
+  /** Suggest a connected CLI first; the suggestion is not applied automatically. */
+  function suggestedTeamModel() {
+    for (const mode of localTools ? ["cli", "api"] : ["api"]) {
+      const provider = modelProviders.find((item) => {
+        const connection = mode === "cli" ? item.cli : item;
+        return connection?.configured && (mode === "cli" || connection.models?.length);
+      });
+      if (provider) return {
+        execution_mode: mode, provider: provider.id,
+        model: mode === "cli" ? "default" : provider.models[0],
+        execution_speed: "standard",
+      };
+    }
+    return {
+      execution_mode: localTools ? "cli" : "api", provider: "", model: "",
+      execution_speed: "standard",
+    };
+  }
+  /** Apply an explicit shared choice while preserving identities and organization. */
+  function applyTeamModel() {
+    if (!teamModel.provider || !teamModel.model)
+      throw new Error("Choose a provider and model for the team first.");
+    if (!speedModes(teamModel).includes(teamModel.execution_speed))
+      throw new Error("Verify this model's speed availability before applying it to the team.");
+    appliedTeamModel = modelSettings(teamModel);
+    agents = agents.map((agent) => ({
+      ...agent, ...appliedTeamModel,
+      capabilities: [...new Set([...agent.capabilities, "model.generate"])],
+    }));
+    publish();
+    render();
+    error(`Applied the shared model to all ${agents.length} agents. Individual overrides remain available below.`);
   }
   /** Connect a pair reciprocally; collaboration never changes either manager. */
   function connectPair(first, second) {
@@ -203,7 +257,7 @@ export function mountOrganizationEditor({
     return true;
   }
   /** Show supported CLI speed choices without inventing options for other providers. */
-  function speedField(agent) {
+  function speedField(agent, scope = "agent") {
     const modes = speedModes(agent);
     const saved = agent.execution_speed;
     const unverified =
@@ -211,10 +265,10 @@ export function mountOrganizationEditor({
     if (unverified) modes.push(saved);
     if (modes.length < 2) return "";
     const labels = { standard: "Standard", fast: "Fast", ultrafast: "Ultrafast" };
-    return `<label class="field"><span>Execution speed</span><select data-agent-speed aria-label="Execution speed">${modes.map((mode) => `<option value="${mode}" ${saved === mode ? "selected" : ""}>${labels[mode]}${unverified && saved === mode ? " (saved; verify connection)" : ""}</option>`).join("")}</select><small>${unverified ? "The saved speed is retained until model availability can be verified." : "Requested service tier; actual response time depends on the provider."}</small></label>`;
+    return `<label class="field"><span>Execution speed</span><select data-${scope}-speed aria-label="${scope === "team" ? "Team execution speed" : "Execution speed"}">${modes.map((mode) => `<option value="${mode}" ${saved === mode ? "selected" : ""}>${labels[mode]}${unverified && saved === mode ? " (saved; verify connection)" : ""}</option>`).join("")}</select><small>${unverified ? "The saved speed is retained until model availability can be verified." : "Requested service tier; actual response time depends on the provider."}</small></label>`;
   }
-  /** Show each agent's provider/model assignment and reciprocal peer links. */
-  function modelAndPeers(agent) {
+  /** Reuse model controls for the whole team and individual agent overrides. */
+  function modelControls(agent, scope = "agent") {
     const provider = modelProviders.find((item) => item.id === agent.provider);
     const mode = agent.execution_mode || "api";
     const connection = mode === "cli" ? provider?.cli : provider;
@@ -225,7 +279,7 @@ export function mountOrganizationEditor({
         ...(agent.model ? [agent.model] : []),
       ]),
     ];
-    return `${localTools ? `<label class="field"><span>Run this agent with</span><select data-agent-execution-mode aria-label="Execution mode"><option value="cli" ${mode === "cli" ? "selected" : ""}>Local CLI · saved sign-in</option><option value="api" ${mode === "api" ? "selected" : ""}>API key</option></select></label>` : ""}<label class="field"><span>Model provider</span><select data-agent-provider aria-label="Model provider"><option value="">No model assigned</option>${[
+    return `${localTools ? `<label class="field"><span>${scope === "team" ? "Run the team with" : "Run this agent with"}</span><select data-${scope}-execution-mode aria-label="${scope === "team" ? "Team execution mode" : "Execution mode"}"><option value="cli" ${mode === "cli" ? "selected" : ""}>Local CLI · saved sign-in</option><option value="api" ${mode === "api" ? "selected" : ""}>API key</option></select></label>` : ""}<label class="field"><span>Model provider</span><select data-${scope}-provider aria-label="${scope === "team" ? "Team model provider" : "Model provider"}"><option value="">${scope === "team" ? "Choose a provider" : "No model assigned"}</option>${[
       ["openai", "OpenAI"],
       ["claude", "Claude"],
       ["gemini", "Gemini"],
@@ -236,7 +290,19 @@ export function mountOrganizationEditor({
       )
       .join(
         "",
-      )}</select></label>${agent.provider ? `<label class="field"><span>Model</span><select data-agent-model aria-label="Model"><option value="">Choose a model</option>${models.map((model) => `<option value="${e(model)}" ${agent.model === model ? "selected" : ""}>${model === "default" ? "CLI default model" : e(model)}</option>`).join("")}</select><small>${connection?.configured ? mode === "cli" ? "Uses this CLI's saved sign-in and selected model." : "Models loaded from the provider's API." : "Connect this provider in Model connections, then reopen the team editor."}</small></label>${speedField(agent)}` : ""}<fieldset class="collaborator-picker"><legend>Works with</legend>${agents
+      )}</select></label>${agent.provider ? `<label class="field"><span>Model</span><select data-${scope}-model aria-label="${scope === "team" ? "Team model" : "Model"}"><option value="">Choose a model</option>${models.map((model) => `<option value="${e(model)}" ${agent.model === model ? "selected" : ""}>${model === "default" ? "CLI default model" : e(model)}</option>`).join("")}</select><small>${connection?.configured ? mode === "cli" ? "Uses this CLI's saved sign-in and selected model." : "Models loaded from the provider's API." : "Connect this provider in Model connections, then reopen the team editor."}</small></label>${speedField(agent, scope)}` : ""}`;
+  }
+  /** Show the shared model draft and whether the saved agent settings currently agree. */
+  function teamModelSection() {
+    const common = commonTeamModel();
+    const status = common
+      ? `All ${agents.length} agents currently share one model.`
+      : "Mixed or unassigned models. Individual agent settings are preserved until you apply a team choice.";
+    return `<section class="agent-editor" aria-label="Shared team model"><div class="form-section-heading"><div><h3>Team model</h3><p>Choose one model for the whole chart, then adjust any agent individually.</p></div><button class="button primary" type="button" data-chart-action="apply-team-model">Apply to entire team</button></div><div class="form-grid">${modelControls(teamModel, "team")}</div><p class="muted" data-team-model-status role="status">${status}</p></section>`;
+  }
+  /** Show each agent's provider/model assignment and reciprocal peer links. */
+  function modelAndPeers(agent) {
+    return `${modelControls(agent)}<fieldset class="collaborator-picker"><legend>Works with</legend>${agents
       .filter((peer) => peer.key !== agent.key)
       .map(
         (peer) =>
@@ -288,7 +354,7 @@ export function mountOrganizationEditor({
     concurrency = String(
       Math.max(1, Math.min(Number(concurrency) || 1, capacity)),
     );
-    root.innerHTML = `<div class="organization-editor"><div class="chart-toolbar"><div><strong>${agents.length} assigned agents</strong><span>${connectMode ? "Choose two agents to connect · Escape to finish" : "Select a card to edit · drag the card to change its manager"}</span></div><div class="chart-add-controls"><select aria-label="New agent role" data-new-role>${Object.entries(
+    root.innerHTML = `${teamModelSection()}<div class="organization-editor"><div class="chart-toolbar"><div><strong>${agents.length} assigned agents</strong><span>${connectMode ? "Choose two agents to connect · Escape to finish" : "Select a card to edit · drag the card to change its manager"}</span></div><div class="chart-add-controls"><select aria-label="New agent role" data-new-role>${Object.entries(
       ROLES,
     )
       .map(
@@ -309,6 +375,10 @@ export function mountOrganizationEditor({
     } while (agents.some((agent) => agent.key === key));
     const agent = makeAgent(role, key, current()?.key || "");
     if (!localTools) agent.execution_mode = "api";
+    if (appliedTeamModel) {
+      Object.assign(agent, appliedTeamModel);
+      agent.capabilities = [...new Set([...agent.capabilities, "model.generate"])];
+    }
     const duplicateCount = agents.filter(
       (other) => other.role_template === role,
     ).length;
@@ -357,7 +427,8 @@ export function mountOrganizationEditor({
     const action = event.target.closest("[data-chart-action]")?.dataset
       .chartAction;
     try {
-      if (action === "connect-mode") {
+      if (action === "apply-team-model") applyTeamModel();
+      else if (action === "connect-mode") {
         connectMode = !connectMode;
         connectionSource = null;
         render();
@@ -410,6 +481,32 @@ export function mountOrganizationEditor({
     try {
       if (event.target.matches("[data-project-concurrency]")) {
         setConcurrency(Number(event.target.value));
+        return;
+      }
+      if (event.target.matches("[data-team-execution-mode]")) {
+        teamModel.execution_mode = event.target.value;
+        teamModel.model = teamModel.provider && teamModel.execution_mode === "cli" ? "default" : "";
+        normalizeSpeed(teamModel);
+        render();
+        return;
+      }
+      if (event.target.matches("[data-team-provider]")) {
+        teamModel.provider = event.target.value;
+        teamModel.model = teamModel.provider && teamModel.execution_mode === "cli" ? "default" : "";
+        normalizeSpeed(teamModel);
+        render();
+        return;
+      }
+      if (event.target.matches("[data-team-model]")) {
+        teamModel.model = event.target.value;
+        normalizeSpeed(teamModel);
+        render();
+        return;
+      }
+      if (event.target.matches("[data-team-speed]")) {
+        teamModel.execution_speed = event.target.value;
+        normalizeSpeed(teamModel);
+        render();
         return;
       }
       const agent = current();

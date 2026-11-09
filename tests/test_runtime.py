@@ -360,6 +360,45 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(error.exception.code, 400)
         error.exception.close()
 
+    def test_planning_route_requires_auth_and_returns_a_review_without_work(self):
+        draft = {
+            "summary": "Review the source",
+            "tasks": [],
+            "team_revision": "revision",
+        }
+        payload = {
+            "goal": "Review the project",
+            "coordinator": "coordinator",
+            "source_files": [],
+        }
+        with patch.object(self.engine, "plan_goal", return_value=draft) as planner:
+            with self.assertRaises(HTTPError) as error:
+                self.request(
+                    f"/api/projects/{self.project_id}/plan",
+                    payload,
+                    {"Authorization": ""},
+                )
+            self.assertEqual(error.exception.code, 403)
+            error.exception.close()
+            planner.assert_not_called()
+            with self.request(
+                f"/api/projects/{self.project_id}/plan", payload
+            ) as result:
+                self.assertEqual(json.load(result), draft)
+            planner.assert_called_once_with(
+                self.project_id, "Review the project", "coordinator", [], allow_cli=True
+            )
+        self.assertEqual(self.engine.snapshot()["tasks"], [])
+
+    def test_goal_submission_rejects_a_stale_chart_revision(self):
+        payload = dict(example(), project_id=self.project_id, team_revision="stale")
+        with self.assertRaises(HTTPError) as error:
+            self.request("/api/goals", payload)
+        self.assertEqual(error.exception.code, 400)
+        self.assertIn("changed after planning", error.exception.read().decode())
+        error.exception.close()
+        self.assertEqual(self.engine.snapshot()["tasks"], [])
+
     def test_frontend_shell_and_assets_are_served(self):
         with self.request("/") as result:
             page = result.read().decode()

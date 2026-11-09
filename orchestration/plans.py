@@ -84,9 +84,14 @@ def parse_tasks(tasks, connection, project_id, agents, *, source_root=None):
             prompt = parameters.get("prompt")
             if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 16000:
                 raise ValueError("Model task needs a prompt of 1–16000 characters")
-            max_tokens = parameters.get("max_tokens", 2048)
-            if type(max_tokens) is not int or not 1 <= max_tokens <= 8192:
-                raise ValueError("Output token limit must be between 1 and 8192")
+            cli = agent.get("execution_mode", "api") == "cli"
+            max_tokens = parameters.get("max_tokens", None if cli else 2048)
+            if not (cli and max_tokens is None) and (
+                type(max_tokens) is not int or not 1 <= max_tokens <= 8192
+            ):
+                raise ValueError(
+                    "An output token limit, when supplied, must be between 1 and 8192"
+                )
             parameters["max_tokens"] = max_tokens
             source_paths = parameters.get("source_files", [])
             if (
