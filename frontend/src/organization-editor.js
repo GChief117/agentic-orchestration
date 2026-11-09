@@ -2,6 +2,8 @@ import { ACTIONS, escapeHtml as e } from "./domain.js";
 import { ROLES, makeAgent, changeRole } from "./presets.js";
 import {
   canReparent,
+  connectAgents,
+  collaborationPath,
   reparentAgent,
   removeAgent,
   organizationLayout,
@@ -55,7 +57,9 @@ export function mountOrganizationEditor({
   let zoom = 1,
     center = null,
     gesture = null,
-    ignoreClick = false;
+    ignoreClick = false,
+    connectMode = false,
+    connectionSource = null;
   let nextId =
     Math.max(
       0,
@@ -103,6 +107,8 @@ export function mountOrganizationEditor({
         interactive: true,
         selected,
         viewport: viewport(),
+        connectMode,
+        connectSource: connectionSource,
       });
     root.querySelector("[data-zoom-label]").textContent =
       `${Math.round(zoom * 100)}%`;
@@ -110,6 +116,58 @@ export function mountOrganizationEditor({
   /** Return the currently selected editable role, or null for the project owner. */
   function current() {
     return agents.find((agent) => agent.key === selected);
+  }
+  /** Connect a pair reciprocally; collaboration never changes either manager. */
+  function connectPair(first, second) {
+    const source = agents.find((agent) => agent.key === first);
+    const target = agents.find((agent) => agent.key === second);
+    if (!source || !target || first === second) {
+      render();
+      error("Choose two different agent cards to connect.");
+      return;
+    }
+    const exists = (source.collaborators || []).includes(second);
+    if (!exists) {
+      agents = connectAgents(agents, first, second);
+      publish();
+    }
+    connectionSource = null;
+    selected = second;
+    render();
+    error(
+      exists
+        ? `${source.name} and ${target.name} are already connected.`
+        : `${source.name} now works with ${target.name}. Reporting lines are unchanged.`,
+    );
+  }
+  /** Support click/tap and keyboard connection creation as an alternative to dragging. */
+  function choosePeer(key) {
+    if (!agents.some((agent) => agent.key === key)) {
+      error(
+        "Connect agent cards to each other. The project owner is not an agent.",
+      );
+      return;
+    }
+    connectMode = true;
+    if (connectionSource) {
+      if (connectionSource === key) {
+        error("Choose a different agent to complete the connection.");
+        return;
+      }
+      connectPair(connectionSource, key);
+      return;
+    }
+    connectionSource = key;
+    selected = key;
+    render();
+    error(`Choose another agent to connect with ${current().name}.`);
+  }
+  /** Prevent the browser's synthetic click from repeating a completed pointer action. */
+  function suppressClick() {
+    ignoreClick = true;
+    document.defaultView.setTimeout(() => {
+      ignoreClick = false;
+    }, 0);
   }
   /** Show each agent's provider/model assignment and reciprocal peer links. */
   function modelAndPeers(agent) {
@@ -139,7 +197,7 @@ export function mountOrganizationEditor({
       )
       .join(
         "",
-      )}<p>Shares completed results. Set task dependencies to control handoff order.</p></fieldset>`;
+      )}<p>Shares completed results. Uncheck to disconnect. Set task dependencies to control handoff order.</p></fieldset>`;
   }
   /** Render editable settings for the selected node, including an accessible reporting selector. */
   function inspector() {
@@ -183,7 +241,7 @@ export function mountOrganizationEditor({
     concurrency = String(
       Math.max(1, Math.min(Number(concurrency) || 1, capacity)),
     );
-    root.innerHTML = `<div class="organization-editor"><div class="chart-toolbar"><div><strong>${agents.length} assigned agents</strong><span>Select a card to edit · drag it onto a new manager</span></div><div class="chart-add-controls"><select aria-label="New agent role" data-new-role>${Object.entries(
+    root.innerHTML = `<div class="organization-editor"><div class="chart-toolbar"><div><strong>${agents.length} assigned agents</strong><span>${connectMode ? "Choose two agents to connect · Escape to finish" : "Select a card to edit · drag the card to change its manager"}</span></div><div class="chart-add-controls"><select aria-label="New agent role" data-new-role>${Object.entries(
       ROLES,
     )
       .map(
@@ -192,7 +250,7 @@ export function mountOrganizationEditor({
       )
       .join(
         "",
-      )}</select><button class="button primary" type="button" data-chart-action="add" title="Add a role reporting to the selected agent, or to you when Project owner is selected">+ Add role</button></div></div><div class="chart-editor-body"><section class="chart-workspace"><div class="chart-view-controls"><button type="button" class="button" data-chart-action="zoom-out" aria-label="Zoom out">−</button><span data-zoom-label></span><button type="button" class="button" data-chart-action="zoom-in" aria-label="Zoom in">+</button><button type="button" class="button" data-chart-action="fit">Fit team</button></div><div data-chart-canvas></div><p class="chart-link-legend">Solid lines: reports to · Dashed lines: works with</p><p class="chart-message" data-chart-message role="status"></p><div class="chart-capacity"><label class="field"><span>How much should run at once?</span><input type="number" min="1" step="1" aria-label="Project concurrency" data-project-concurrency value="${e(concurrency)}"><small>Enter a task limit or use the button below.</small></label><button type="button" class="button" data-chart-action="increase-tasks">+ Increase task limit</button><p class="muted">Team capacity: ${capacity} parallel tasks. Increasing above this adds slots to ${e((current() || agents[0]).name)}. Workspace limits still apply.</p></div></section><aside class="node-inspector" data-node-inspector>${inspector()}</aside></div></div>`;
+      )}</select><button class="button primary" type="button" data-chart-action="add" title="Add a role reporting to the selected agent, or to you when Project owner is selected">+ Add role</button></div></div><div class="chart-editor-body"><section class="chart-workspace"><div class="chart-view-controls"><button type="button" class="button" data-chart-action="zoom-out" aria-label="Zoom out">−</button><span data-zoom-label></span><button type="button" class="button" data-chart-action="zoom-in" aria-label="Zoom in">+</button><button type="button" class="button" data-chart-action="fit">Fit team</button><button type="button" class="button" data-chart-action="connect-mode" aria-pressed="${connectMode}">${connectMode ? "Done connecting" : "Connect agents"}</button></div><div data-chart-canvas></div><p class="chart-link-legend">Drag a + handle to another agent to connect them. Solid: reports to · Dashed: works with</p><p class="chart-message" data-chart-message role="status"></p><div class="chart-capacity"><label class="field"><span>How much should run at once?</span><input type="number" min="1" step="1" aria-label="Project concurrency" data-project-concurrency value="${e(concurrency)}"><small>Enter a task limit or use the button below.</small></label><button type="button" class="button" data-chart-action="increase-tasks">+ Increase task limit</button><p class="muted">Team capacity: ${capacity} parallel tasks. Increasing above this adds slots to ${e((current() || agents[0]).name)}. Workspace limits still apply.</p></div></section><aside class="node-inspector" data-node-inspector>${inspector()}</aside></div></div>`;
     draw();
   }
   /** Add a role under the current selection and generate an unused internal key. */
@@ -240,6 +298,10 @@ export function mountOrganizationEditor({
     }
     const node = event.target.closest("[data-org-agent]");
     if (node) {
+      if (connectMode || event.target.closest("[data-connect-handle]")) {
+        choosePeer(node.dataset.orgAgent);
+        return;
+      }
       selected = node.dataset.orgAgent;
       render();
       return;
@@ -247,7 +309,12 @@ export function mountOrganizationEditor({
     const action = event.target.closest("[data-chart-action]")?.dataset
       .chartAction;
     try {
-      if (action === "increase-tasks") setConcurrency(Number(concurrency) + 1);
+      if (action === "connect-mode") {
+        connectMode = !connectMode;
+        connectionSource = null;
+        render();
+      } else if (action === "increase-tasks")
+        setConcurrency(Number(concurrency) + 1);
       else if (action === "add") add();
       else if (action === "remove") {
         if (locked.has(selected))
@@ -255,6 +322,7 @@ export function mountOrganizationEditor({
             "This agent has recorded tasks and cannot be removed.",
           );
         agents = removeAgent(agents, selected);
+        connectionSource = null;
         selected = agents[0].key;
         zoom = 1;
         center = null;
@@ -316,16 +384,12 @@ export function mountOrganizationEditor({
       }
       if (event.target.matches("[data-collaborator]")) {
         const peer = agents.find((item) => item.key === event.target.value);
-        agent.collaborators = (agent.collaborators || []).filter(
-          (key) => key !== peer.key,
+        agents = connectAgents(
+          agents,
+          agent.key,
+          peer.key,
+          event.target.checked,
         );
-        peer.collaborators = (peer.collaborators || []).filter(
-          (key) => key !== agent.key,
-        );
-        if (event.target.checked) {
-          agent.collaborators.push(peer.key);
-          peer.collaborators.push(agent.key);
-        }
         publish();
         draw();
         return;
@@ -379,9 +443,15 @@ export function mountOrganizationEditor({
   function pointerDown(event) {
     const svg = event.target.closest("[data-org-svg]");
     if (!svg || (event.button ?? 0) !== 0) return;
+    if (gesture && gesture.pointerId !== event.pointerId) return;
     const node = event.target.closest("[data-org-node]")?.dataset.orgNode;
     gesture = {
       svg,
+      pointerId: event.pointerId,
+      kind:
+        connectMode || event.target.closest("[data-connect-handle]")
+          ? "connect"
+          : "move",
       node: node === "__owner__" ? null : node,
       pressedNode: node,
       startX: event.clientX,
@@ -398,7 +468,7 @@ export function mountOrganizationEditor({
   /** Move the actual card with the pointer and preview valid manager targets.
    * Background drags pan the viewBox without changing reporting relationships. */
   function pointerMove(event) {
-    if (!gesture) return;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
     if (
       Math.hypot(
         event.clientX - gesture.startX,
@@ -413,6 +483,45 @@ export function mountOrganizationEditor({
     }
     gesture.moved = true;
     event.preventDefault();
+    if (gesture.kind === "connect") {
+      if (!gesture.node) return;
+      const source = gesture.sourcePosition;
+      const cursor = point(event, gesture.svg);
+      const hit = document
+        .elementFromPoint?.(event.clientX, event.clientY)
+        ?.closest("[data-org-node]");
+      const candidate = hit?.dataset.orgNode;
+      gesture.candidate =
+        candidate !== gesture.node &&
+        agents.some((agent) => agent.key === candidate)
+          ? candidate
+          : null;
+      root
+        .querySelectorAll(".peer-target")
+        .forEach((element) => element.classList.remove("peer-target"));
+      gesture.sourceElement?.classList.add("connection-source");
+      gesture.svg.classList.add("is-connecting");
+      if (gesture.candidate) hit.classList.add("peer-target");
+      const target =
+        gesture.candidate &&
+        organizationLayout(agents).nodes.find(
+          (node) => node.key === gesture.candidate,
+        );
+      root
+        .querySelector("[data-peer-preview]")
+        ?.setAttribute(
+          "d",
+          target
+            ? collaborationPath(source, target)
+            : `M ${source.x + source.width} ${source.y + source.height / 2} L ${cursor.x} ${cursor.y}`,
+        );
+      error(
+        gesture.candidate
+          ? "Release to connect these agents as collaborators."
+          : "Drag onto another agent. This will not change its manager.",
+      );
+      return;
+    }
     if (!gesture.node) {
       const next = point(event, gesture.svg);
       const box = viewport();
@@ -506,9 +615,32 @@ export function mountOrganizationEditor({
   }
   /** Commit only valid drops; invalid gestures leave the original hierarchy intact. */
   function pointerUp(event) {
-    if (!gesture) return;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
     root.querySelector("[data-drag-link]")?.setAttribute("d", "");
     const ended = gesture;
+    if (ended.kind === "connect") {
+      gesture = null;
+      suppressClick();
+      if (!ended.moved) {
+        choosePeer(ended.pressedNode);
+        return;
+      }
+      const target = document
+        .elementFromPoint?.(event.clientX, event.clientY)
+        ?.closest("[data-org-node]")?.dataset.orgNode;
+      if (
+        ended.node &&
+        target &&
+        target !== ended.node &&
+        agents.some((agent) => agent.key === target)
+      )
+        connectPair(ended.node, target);
+      else {
+        render();
+        error("No connection added. Drop onto a different agent card.");
+      }
+      return;
+    }
     if (ended.node && ended.moved && event) {
       const target = document
         .elementFromPoint?.(event.clientX, event.clientY)
@@ -552,11 +684,13 @@ export function mountOrganizationEditor({
   }
 
   /** Abort a cancelled gesture without changing any reporting relationship. */
-  function pointerCancel() {
+  function pointerCancel(event) {
+    if (gesture && event && gesture.pointerId !== event.pointerId) return;
     const movedCard = gesture?.moved && gesture.node;
+    const connecting = gesture?.kind === "connect";
     gesture = null;
     ignoreClick = false;
-    if (movedCard) render();
+    if (movedCard || connecting) render();
     else {
       root.querySelector("[data-drag-link]")?.setAttribute("d", "");
       root
@@ -570,11 +704,27 @@ export function mountOrganizationEditor({
   }
   /** Provide keyboard node selection; the inspector offers keyboard reparenting. */
   function keydown(event) {
+    if (
+      event.key === "Escape" &&
+      (connectMode || gesture?.kind === "connect")
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      gesture = null;
+      connectMode = false;
+      connectionSource = null;
+      render();
+      return;
+    }
     const node = event.target.closest("[data-org-agent]");
     if (node && ["Enter", " "].includes(event.key)) {
       event.preventDefault();
-      selected = node.dataset.orgAgent;
-      render();
+      if (connectMode || event.target.closest("[data-connect-handle]"))
+        choosePeer(node.dataset.orgAgent);
+      else {
+        selected = node.dataset.orgAgent;
+        render();
+      }
       [...root.querySelectorAll("[data-org-agent]")]
         .find((element) => element.dataset.orgAgent === selected)
         ?.focus?.();

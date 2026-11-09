@@ -52,7 +52,7 @@ Discovery routes use the same local session authorization as other APIs: `GET /a
 ## Model execution and collaboration
 
 1. Open **Model connections**, enter a provider API key, and connect. Available models are loaded from that provider. API usage may incur provider charges.
-2. Open a project's team editor. Select an agent, choose **Model provider** and **Model**, and connect peers under **Works with**.
+2. Open a project's team editor. Select an agent, choose **Model provider** and **Model**, and connect peers by dragging a card’s **+ handle** onto another agent. Alternatively choose **Connect agents** and click two cards, or use **Works with** in the inspector.
 3. Add a goal with **Run model task** steps. Set each prompt, output artifact path, and maximum output tokens. Add dependencies wherever one step must wait for another.
 
 The scheduler enforces task order, project/agent capacity, and file conflicts. Model tasks receive the project charter, their role/instructions, team roster, and available completed outputs from explicit dependencies and collaborating agents. Dashed chart links show collaboration; solid links show reporting. Collaboration does not make tasks wait automatically. Only task dependencies impose execution order.

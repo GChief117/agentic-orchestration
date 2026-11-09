@@ -312,3 +312,49 @@
   font-size: 11px;
   margin: 8px 0;
 }
+
+/* Peer connection handles operate independently of card dragging/reporting. */
+.chart-view-controls {
+  flex-wrap: wrap;
+}
+.chart-view-controls [aria-pressed="true"] {
+  border-color: var(--org-accent);
+  background: var(--org-selected);
+  color: var(--org-text);
+}
+.org-node .org-port-hit {
+  fill: transparent;
+  stroke: none;
+}
+.org-node .org-connection-port {
+  fill: var(--org-accent);
+  stroke: var(--org-card);
+  stroke-width: 2;
+}
+.org-connect-plus {
+  fill: none;
+  stroke: var(--theme-on-accent, #fff);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+[data-connect-handle],
+.connecting-peers .org-card,
+.is-connecting {
+  cursor: crosshair;
+}
+.connecting-peers .owner-node {
+  cursor: not-allowed;
+}
+.org-node.connection-source rect,
+.org-node.peer-target rect {
+  stroke: var(--org-accent);
+  stroke-width: 2.5;
+  fill: var(--org-selected);
+}
+.org-peer-preview {
+  fill: none;
+  stroke: var(--org-accent);
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+  pointer-events: none;
+}

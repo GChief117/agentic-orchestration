@@ -31,6 +31,12 @@ restrict which listed models work with text generation; a rejected model fails
 explicitly. Keys entered in the UI are lost on restart. Environment keys can be
 used for persistent server configuration.
 
+Create peer links directly on the chart by dragging a card’s **+ handle** onto
+another agent. **Connect agents** mode also supports selecting two cards with
+clicks, taps, or Enter/Space. Escape exits connection mode. Uncheck a peer under
+**Works with** to remove the link on both sides. Connecting peers never changes
+their managers.
+
 `Works with` links are reciprocal information-sharing relationships, not execution
 dependencies. They expose completed peer results within the same project; future
 or still-running results are never guessed. Add a task dependency to require a
