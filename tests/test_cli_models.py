@@ -15,6 +15,186 @@ from orchestration.cli_models import CLIRuntime
 
 
 class CLIRuntimeTests(unittest.TestCase):
+    def test_claude_initialization_discovers_safe_models_without_a_user_turn(self):
+        calls = []
+
+        def run(args, stdin, directory, timeout, cancelled):
+            calls.append((args, stdin))
+            if "auth" in args:
+                return subprocess.CompletedProcess(args, 0, b'{"loggedIn":true}', b"")
+            request = json.loads(stdin)
+            self.assertEqual(request["type"], "control_request")
+            self.assertEqual(request["request"], {"subtype": "initialize"})
+            self.assertNotIn(b'"type": "user"', stdin)
+            self.assertEqual(args[args.index("--tools") + 1], "")
+            self.assertIn("--safe-mode", args)
+            self.assertIn("--no-session-persistence", args)
+            response = {
+                "type": "control_response",
+                "response": {
+                    "subtype": "success",
+                    "request_id": request["request_id"],
+                    "response": {
+                        "account": {"token": "PRIVATE", "email": "PRIVATE"},
+                        "models": [
+                            {
+                                "value": "default",
+                                "resolvedModel": "claude-test",
+                                "displayName": "Default",
+                                "description": "Native default",
+                            },
+                            {
+                                "value": "sonnet",
+                                "resolvedModel": "claude-sonnet-test",
+                                "displayName": "Sonnet",
+                                "description": "Efficient routine work",
+                            },
+                            {
+                                "value": "opus",
+                                "displayName": "Opus",
+                                "description": "Complex work",
+                            },
+                            {"value": "--unsafe", "displayName": "Rejected"},
+                        ],
+                    },
+                },
+            }
+            return subprocess.CompletedProcess(
+                args, 0, json.dumps(response).encode(), b""
+            )
+
+        runtime = CLIRuntime(runner=run)
+        with patch(
+            "orchestration.cli_models.shutil.which", return_value="/tool/claude"
+        ):
+            runtime.refresh("claude")
+            entry = runtime.status("claude")
+            self.assertEqual(entry["models"], ["default", "sonnet", "opus"])
+            self.assertEqual(
+                entry["model_details"]["sonnet"]["resolved_model"], "claude-sonnet-test"
+            )
+            self.assertEqual(
+                entry["model_details"]["opus"]["description"], "Complex work"
+            )
+            self.assertNotIn("PRIVATE", json.dumps(entry))
+            runtime.checked["claude"] -= 3
+            runtime.refresh("claude")
+        self.assertEqual(sum(bool(stdin) for _, stdin in calls), 1)
+        self.assertEqual(sum("auth" in args for args, _ in calls), 2)
+
+    def test_claude_metadata_failure_keeps_cache_but_logout_clears_it(self):
+        logged_in = True
+        valid_metadata = True
+        initializations = 0
+
+        def run(args, stdin, *_rest):
+            nonlocal initializations
+            if "auth" in args:
+                raw = json.dumps({"loggedIn": logged_in}).encode()
+            else:
+                initializations += 1
+                request = json.loads(stdin)
+                raw = json.dumps(
+                    {
+                        "type": "control_response",
+                        "response": {
+                            "subtype": "success",
+                            "request_id": request["request_id"]
+                            if valid_metadata
+                            else "wrong-id",
+                            "response": {
+                                "models": [
+                                    {
+                                        "value": "haiku",
+                                        "displayName": "Haiku",
+                                        "description": "Quick answers",
+                                    }
+                                ]
+                            },
+                        },
+                    }
+                ).encode()
+            return subprocess.CompletedProcess(args, 0, raw, b"")
+
+        runtime = CLIRuntime(runner=run)
+        with patch(
+            "orchestration.cli_models.shutil.which", return_value="/tool/claude"
+        ):
+            runtime.refresh("claude")
+            valid_metadata = False
+            runtime.checked["claude"] -= 3
+            runtime.model_cache["claude"]["checked"] -= 301
+            runtime.refresh("claude")
+            self.assertEqual(runtime.status("claude")["models"], ["default", "haiku"])
+            self.assertTrue(runtime.status("claude")["configured"])
+            logged_in = False
+            runtime.checked["claude"] -= 3
+            runtime.refresh("claude")
+            self.assertEqual(runtime.status("claude")["models"], [])
+            self.assertNotIn("claude", runtime.model_cache)
+            logged_in, valid_metadata = True, True
+            runtime.checked["claude"] -= 3
+            runtime.refresh("claude")
+        self.assertEqual(initializations, 3)
+        self.assertIn("haiku", runtime.status("claude")["models"])
+
+    def test_claude_invalid_or_ambiguous_initialization_falls_back_to_default(self):
+        for mode in ("malformed", "empty", "duplicate"):
+            with self.subTest(mode=mode):
+
+                def run(args, stdin, *_rest):
+                    if "auth" in args:
+                        return subprocess.CompletedProcess(
+                            args, 0, b'{"loggedIn":true}', b""
+                        )
+                    request = json.loads(stdin)
+                    response = {
+                        "type": "control_response",
+                        "response": {
+                            "subtype": "success",
+                            "request_id": request["request_id"],
+                            "response": {
+                                "models": []
+                                if mode == "empty"
+                                else [{"value": "opus", "displayName": "Opus"}]
+                            },
+                        },
+                    }
+                    raw = (
+                        b"not JSON"
+                        if mode == "malformed"
+                        else json.dumps(response).encode()
+                    )
+                    if mode == "duplicate":
+                        raw += b"\n" + raw
+                    return subprocess.CompletedProcess(args, 0, raw, b"")
+
+                runtime = CLIRuntime(runner=run)
+                with patch(
+                    "orchestration.cli_models.shutil.which", return_value="/tool/claude"
+                ):
+                    runtime.refresh("claude")
+                self.assertEqual(runtime.status("claude")["models"], ["default"])
+                self.assertTrue(runtime.status("claude")["configured"])
+
+    def test_gemini_preserves_native_labels_and_groups_provider_models(self):
+        def run(args, *_rest):
+            raw = b"gemini-test-argon\tGemini Test Argon (Medium)\ngemini-test-flash\tGemini Test Flash\nclaude-test\tClaude via Antigravity\n"
+            return subprocess.CompletedProcess(args, 0, raw, b"")
+
+        runtime = CLIRuntime(runner=run)
+        with patch("orchestration.cli_models.shutil.which", return_value="/tool/agy"):
+            runtime.refresh("gemini")
+        details = runtime.status("gemini")["model_details"]
+        self.assertEqual(
+            details["gemini-test-argon"]["label"], "Gemini Test Argon (Medium)"
+        )
+        self.assertIn("complex reasoning", details["gemini-test-argon"]["description"])
+        self.assertIn("speed matters", details["gemini-test-flash"]["description"])
+        self.assertEqual(
+            details["claude-test"]["group"], "Other models through Antigravity"
+        )
+
     def test_native_model_catalog_exposes_only_advertised_speeds(self):
         def run(args, *_rest):
             if args[-2:] == ["debug", "models"]:

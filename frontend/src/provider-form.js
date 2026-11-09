@@ -91,6 +91,7 @@ export function mountProviderPanel(
             models: provider.models,
             speed_modes: provider.speed_modes,
             model_speed_modes: provider.model_speed_modes,
+            model_details: provider.model_details,
           })),
         );
         content.querySelector("[data-error]").classList.add("hidden");

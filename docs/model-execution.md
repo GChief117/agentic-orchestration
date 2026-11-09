@@ -84,8 +84,12 @@ without the API-key environment variables used by the separate API runtime.
 Process output is limited to 4 MiB and final text to 64 KiB, with a 120-second
 timeout. Cancellation terminates the CLI process group. Only a completed native
 result is accepted. `default` delegates model selection to the CLI; Codex and
-Antigravity also expose native model choices. Claude currently exposes its native
-default. The receipt includes `execution_mode` and `token_limit_enforced` so
+Antigravity also expose native model choices. Claude's model list comes from a
+non-generative native initialization request, including supported aliases and
+versioned choices. Model selectors show native names and descriptions rather
+than requiring users to know model IDs. Antigravity groups Gemini models
+separately from additional model families available through that CLI. The
+receipt includes `execution_mode` and `token_limit_enforced` so
 CLI token targets are not represented as hard limits.
 Antigravity may also apply instructions from its native global configuration;
 this adapter does not rewrite that configuration or claim exclusive control of

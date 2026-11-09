@@ -76,6 +76,8 @@ export function mountOrganizationEditor({
       return { ...agent, execution_mode: "api", execution_speed: "standard" };
     if (!agent.provider)
       return { ...agent, execution_mode: "cli", execution_speed: "standard" };
+    if (agent.execution_mode === "cli" && !agent.model)
+      return { ...agent, model: "default" };
     return agent;
   });
   agents.forEach((agent) => {
@@ -267,6 +269,32 @@ export function mountOrganizationEditor({
     const labels = { standard: "Standard", fast: "Fast", ultrafast: "Ultrafast" };
     return `<label class="field"><span>Execution speed</span><select data-${scope}-speed aria-label="${scope === "team" ? "Team execution speed" : "Execution speed"}">${modes.map((mode) => `<option value="${mode}" ${saved === mode ? "selected" : ""}>${labels[mode]}${unverified && saved === mode ? " (saved; verify connection)" : ""}</option>`).join("")}</select><small>${unverified ? "The saved speed is retained until model availability can be verified." : "Requested service tier; actual response time depends on the provider."}</small></label>`;
   }
+  /** Render provider-supplied model labels, grouping additional Antigravity families. */
+  function modelOptions(models, details, selected) {
+    const groups = new Map();
+    for (const model of models) {
+      const group = details?.[model]?.group || "";
+      if (!groups.has(group)) groups.set(group, []);
+      const label = details?.[model]?.label || (model === "default" ? "CLI default model" : model);
+      groups.get(group).push(`<option value="${e(model)}" ${model === selected ? "selected" : ""}>${e(label)}</option>`);
+    }
+    return [...groups].map(([group, options]) => group
+      ? `<optgroup label="${e(group)}">${options.join("")}</optgroup>`
+      : options.join("")
+    ).join("");
+  }
+  /** Explain the selected model using native metadata without inventing capability limits. */
+  function modelDescription(connection, agent) {
+    const detail = connection?.model_details?.[agent.model];
+    const help = detail?.description || (connection?.configured
+      ? agent.execution_mode === "cli"
+        ? "Uses this CLI's saved sign-in and selected model."
+        : "Models loaded from the provider's API."
+      : "Connect this provider in Model connections, then reopen the team editor.");
+    const resolved = detail?.resolved_model && detail.resolved_model !== agent.model
+      ? `<small>Current model: ${e(detail.resolved_model)}</small>` : "";
+    return `<small>${e(help)}</small>${resolved}`;
+  }
   /** Reuse model controls for the whole team and individual agent overrides. */
   function modelControls(agent, scope = "agent") {
     const provider = modelProviders.find((item) => item.id === agent.provider);
@@ -290,7 +318,7 @@ export function mountOrganizationEditor({
       )
       .join(
         "",
-      )}</select></label>${agent.provider ? `<label class="field"><span>Model</span><select data-${scope}-model aria-label="${scope === "team" ? "Team model" : "Model"}"><option value="">Choose a model</option>${models.map((model) => `<option value="${e(model)}" ${agent.model === model ? "selected" : ""}>${model === "default" ? "CLI default model" : e(model)}</option>`).join("")}</select><small>${connection?.configured ? mode === "cli" ? "Uses this CLI's saved sign-in and selected model." : "Models loaded from the provider's API." : "Connect this provider in Model connections, then reopen the team editor."}</small></label>${speedField(agent, scope)}` : ""}`;
+      )}</select></label>${agent.provider ? `<label class="field"><span>Model</span><select data-${scope}-model aria-label="${scope === "team" ? "Team model" : "Model"}"><option value="">Choose a model</option>${modelOptions(models, connection?.model_details, agent.model)}</select>${modelDescription(connection, agent)}</label>${speedField(agent, scope)}` : ""}`;
   }
   /** Show the shared model draft and whether the saved agent settings currently agree. */
   function teamModelSection() {

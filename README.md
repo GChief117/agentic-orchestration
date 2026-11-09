@@ -85,6 +85,8 @@ Discovery routes use the same local session authorization as other APIs: `GET /a
 
 You can also choose **Define tasks manually**. Result filenames are supplied automatically; optional output settings are under **Advanced settings**. CLI tasks have no output-token target unless you set one. If the chart changes after planning, generate a new plan before starting.
 
+Model choices use names and descriptions supplied by the native tools. Claude Code exposes its supported model families and versions; Antigravity separates Gemini models from other available families. Selecting a model shows its description and, when provided, the model behind a family alias.
+
 The scheduler enforces task order, project/agent capacity, and file conflicts. Model tasks receive explicitly selected source files, the project charter, their role/instructions, team roster, and available completed outputs from explicit dependencies and collaborating agents. Dashed chart links show collaboration; solid links show reporting. Collaboration does not make tasks wait automatically. Only task dependencies impose execution order.
 
 Results are saved as project-scoped text artifacts with execution method, provider, model, usage, and response metadata. A completed model response is not a guarantee of factual correctness; assign a reviewer for content review. CLI turns run in isolated temporary directories with model tools disabled or denied. The model cannot directly execute shell commands or change project source files through this action. No provider fallback or automatic retry is performed.

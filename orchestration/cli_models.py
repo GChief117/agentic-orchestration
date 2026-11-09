@@ -29,7 +29,9 @@ CLI_PROVIDERS = {
 MAX_OUTPUT_BYTES = 4 * 1024 * 1024
 MAX_TEXT_BYTES = 65536
 REFRESH_SECONDS = 2
+MODEL_REFRESH_SECONDS = 300
 SPEED_MODES = ("standard", "fast", "ultrafast")
+MODEL_CATALOG_REQUEST_ID = "orchestration-model-catalog"
 
 
 class CLIRuntime:
@@ -42,13 +44,22 @@ class CLIRuntime:
         self.lock = threading.RLock()
         self.refresh_locks = {key: threading.Lock() for key in CLI_PROVIDERS}
         self.checked = {}
+        self.model_cache = {}
         self.entries = {key: self._entry(key, "unverified") for key in CLI_PROVIDERS}
 
     @staticmethod
-    def _entry(provider, state, models=None, model_speed_modes=None):
+    def _entry(
+        provider, state, models=None, model_speed_modes=None, model_details=None
+    ):
         """Build public metadata containing no CLI output or account details."""
         info = CLI_PROVIDERS[provider]
         model_modes = model_speed_modes or {}
+        details = copy.deepcopy(model_details or {})
+        if "default" in (models or []) and "default" not in details:
+            details["default"] = {
+                "label": "CLI default model",
+                "description": "Uses the model currently selected by this CLI.",
+            }
         return {
             "id": provider,
             "name": info["name"],
@@ -63,7 +74,52 @@ class CLIRuntime:
                 or any(speed in modes for modes in model_modes.values())
             ],
             "model_speed_modes": copy.deepcopy(model_modes),
+            "model_details": details,
         }
+
+    def _cached_entry(self, provider, state):
+        """Retain safe model choices during transient metadata or network failures."""
+        with self.lock:
+            cached = copy.deepcopy(self.model_cache.get(provider, {}))
+        return self._entry(
+            provider,
+            state,
+            cached.get("models"),
+            cached.get("model_speed_modes"),
+            cached.get("model_details"),
+        )
+
+    def _cache_models(self, provider, models, modes=None, details=None):
+        """Cache only model metadata; account and authentication payloads are discarded."""
+        selected = list(dict.fromkeys(models))[:501]
+        with self.lock:
+            self.model_cache[provider] = {
+                "checked": time.monotonic(),
+                "models": selected,
+                "model_speed_modes": copy.deepcopy(
+                    {
+                        key: value
+                        for key, value in (modes or {}).items()
+                        if key in selected
+                    }
+                ),
+                "model_details": copy.deepcopy(
+                    {
+                        key: value
+                        for key, value in (details or {}).items()
+                        if key in selected
+                    }
+                ),
+            }
+
+    def _models_fresh(self, provider):
+        """Keep model discovery out of the frequent authentication poll loop."""
+        with self.lock:
+            cached = self.model_cache.get(provider)
+            return (
+                cached is not None
+                and time.monotonic() - cached["checked"] < MODEL_REFRESH_SECONDS
+            )
 
     @staticmethod
     def _provider(provider):
@@ -122,40 +178,48 @@ class CLIRuntime:
                     AttributeError,
                     subprocess.SubprocessError,
                 ):
-                    entry = self._entry(provider, "unverified")
+                    entry = self._cached_entry(provider, "unverified")
             with self.lock:
+                if entry["state"] in ("signed_out", "not_installed"):
+                    self.model_cache.pop(provider, None)
+                    entry = self._entry(provider, entry["state"])
                 self.entries[provider] = entry
                 self.checked[provider] = time.monotonic()
         finally:
             refresh_lock.release()
 
-    def _metadata(self, args):
+    def _metadata(self, args, stdin=b""):
         """Capture native status/model output privately with bounded resources."""
         with tempfile.TemporaryDirectory(
             prefix="orchestration-cli-status-"
         ) as directory:
-            return self.runner(args, b"", directory, 15, None)
+            return self.runner(args, stdin, directory, 15, None)
 
     def _discover(self, provider, binary):
         """Use provider-supported non-generative checks, never credential files."""
         if provider == "gemini":
             result = self._metadata([binary, "models"])
             models = []
+            details = {}
             if result.returncode == 0:
                 for line in result.stdout.decode("utf-8").splitlines():
                     candidate = line.split("\t", 1)[0].strip()
                     if "\t" in line:
                         try:
-                            models.append(model_name(candidate))
+                            model = model_name(candidate)
+                            models.append(model)
+                            label = (
+                                self._metadata_text(line.split("\t", 1)[1], 300)
+                                or model
+                            )
+                            details[model] = self._gemini_detail(model, label)
                         except ValueError:
                             pass
             if models:
-                return self._entry(
-                    provider,
-                    "signed_in",
-                    ["default", *list(dict.fromkeys(models))[:500]],
-                )
-            return self._entry(provider, self._failure_state(result))
+                models = ["default", *list(dict.fromkeys(models))[:500]]
+                self._cache_models(provider, models, details=details)
+                return self._cached_entry(provider, "signed_in")
+            return self._cached_entry(provider, self._failure_state(result))
         args = (
             [binary, "login", "status"]
             if provider == "openai"
@@ -165,17 +229,20 @@ class CLIRuntime:
         if provider == "claude":
             payload = json.loads(result.stdout)
             if not isinstance(payload, dict):
-                return self._entry(provider, "unverified")
+                return self._cached_entry(provider, "unverified")
             logged_in = payload.get("loggedIn")
             if logged_in is True and result.returncode == 0:
-                return self._entry(provider, "signed_in", ["default"])
+                return self._claude_models(binary)
             if logged_in is False:
                 return self._entry(provider, "signed_out")
-            return self._entry(provider, "unverified")
+            return self._cached_entry(provider, "unverified")
         if result.returncode != 0:
-            return self._entry(provider, self._failure_state(result))
+            return self._cached_entry(provider, self._failure_state(result))
+        if self._models_fresh(provider):
+            return self._cached_entry(provider, "signed_in")
         models = ["default"]
         model_speed_modes = {"default": ["standard"]}
+        model_details = {}
         try:
             result = self._metadata([binary, "debug", "models"])
             if result.returncode == 0:
@@ -188,6 +255,15 @@ class CLIRuntime:
                         try:
                             models.append(model_name(item.get("slug")))
                             model_speed_modes[item["slug"]] = self._model_speeds(item)
+                            model_details[item["slug"]] = {
+                                "label": self._metadata_text(
+                                    item.get("display_name"), 300
+                                )
+                                or item["slug"],
+                                "description": self._metadata_text(
+                                    item.get("description"), 1000
+                                ),
+                            }
                         except ValueError:
                             pass
         except (
@@ -197,10 +273,124 @@ class CLIRuntime:
             AttributeError,
             subprocess.SubprocessError,
         ):
-            pass  # Native model discovery is optional after a successful login check.
-        return self._entry(
-            provider, "signed_in", list(dict.fromkeys(models)), model_speed_modes
+            if provider in self.model_cache:
+                cached = self._cached_entry(provider, "signed_in")
+                self._cache_models(
+                    provider,
+                    cached["models"],
+                    cached["model_speed_modes"],
+                    cached["model_details"],
+                )
+                return cached
+        self._cache_models(
+            provider, list(dict.fromkeys(models)), model_speed_modes, model_details
         )
+        return self._cached_entry(provider, "signed_in")
+
+    @staticmethod
+    def _metadata_text(value, maximum):
+        """Bound display text without interpreting native metadata as markup or code."""
+        if not isinstance(value, str) or "\0" in value:
+            return ""
+        return value.strip()[:maximum]
+
+    @classmethod
+    def _gemini_detail(cls, model, label):
+        """Describe documented Gemini families while preserving native display names."""
+        description = "Available through Antigravity."
+        if model.startswith("gemini-"):
+            if "argon" in model.lower():
+                description = (
+                    "For complex reasoning, architecture, and difficult debugging."
+                )
+            elif "flash" in model.lower():
+                description = "For everyday development work where speed matters."
+        return {
+            "label": label,
+            "description": description,
+            "group": "Gemini models"
+            if model.startswith("gemini-")
+            else "Other models through Antigravity",
+        }
+
+    def _claude_models(self, binary):
+        """Read native supported models through initialization, without a user turn."""
+        provider = "claude"
+        if self._models_fresh(provider):
+            return self._cached_entry(provider, "signed_in")
+        models = ["default"]
+        details = {}
+        try:
+            args, _ = self._command(provider, binary, "default", "")
+            args[args.index("--input-format") + 1] = "stream-json"
+            args[args.index("--output-format") + 1] = "stream-json"
+            args.append("--verbose")
+            request = {
+                "type": "control_request",
+                "request_id": MODEL_CATALOG_REQUEST_ID,
+                "request": {"subtype": "initialize"},
+            }
+            result = self._metadata(args, (json.dumps(request) + "\n").encode())
+            if result.returncode != 0:
+                raise ValueError("Claude model initialization failed")
+            matches = []
+            for line in result.stdout.splitlines():
+                event = json.loads(line)
+                if (
+                    not isinstance(event, dict)
+                    or event.get("type") != "control_response"
+                ):
+                    continue
+                response = event.get("response")
+                if (
+                    isinstance(response, dict)
+                    and response.get("request_id") == MODEL_CATALOG_REQUEST_ID
+                ):
+                    matches.append(response)
+            if len(matches) != 1 or matches[0].get("subtype") != "success":
+                raise ValueError("Claude returned no unique model initialization")
+            payload = matches[0].get("response")
+            native_models = payload.get("models") if isinstance(payload, dict) else None
+            if not isinstance(native_models, list) or not native_models:
+                raise ValueError("Claude returned no model choices")
+            for item in native_models[:500]:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    model = model_name(item.get("value"))
+                except ValueError:
+                    continue
+                label = self._metadata_text(item.get("displayName"), 300)
+                if not label:
+                    continue
+                if model not in models:
+                    models.append(model)
+                detail = {
+                    "label": label,
+                    "description": self._metadata_text(item.get("description"), 1000),
+                }
+                resolved = item.get("resolvedModel")
+                try:
+                    detail["resolved_model"] = model_name(resolved)
+                except ValueError:
+                    pass
+                details[model] = detail
+            if not details:
+                raise ValueError("Claude returned no valid model metadata")
+        except (
+            OSError,
+            ValueError,
+            TypeError,
+            AttributeError,
+            subprocess.SubprocessError,
+        ):
+            with self.lock:
+                cached = copy.deepcopy(self.model_cache.get(provider))
+            if cached:
+                models = cached["models"]
+                details = cached["model_details"]
+        self._cache_models(provider, models, details=details)
+        return self._cached_entry(provider, "signed_in")
 
     @staticmethod
     def _model_speeds(model):
