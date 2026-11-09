@@ -7,16 +7,19 @@ import sys
 import tempfile
 import time
 
+from .sources import read_source_files
+
 
 class ExecutionCancelled(Exception):
     pass
 
 
 class LocalExecutor:
-    def __init__(self, connection, models=None):
+    def __init__(self, connection, models=None, *, allow_source_access=True):
         """Attach the local target policy used to authorize and scope operations."""
         self.connection = connection
         self.models = models
+        self.allow_source_access = allow_source_access
 
     def execute(self, task, cancelled):
         """Perform one supported operation and return an evidence-bearing receipt.
@@ -125,9 +128,19 @@ class LocalExecutor:
                 remaining -= len(excerpt)
                 if remaining <= 0:
                     break
+            source_files = []
+            if params.get("source_files"):
+                if not self.allow_source_access:
+                    raise PermissionError(
+                        "Local source files are unavailable in hosted mode"
+                    )
+                source_files = read_source_files(
+                    context["project"]["source_path"], params["source_files"]
+                )
             prompt = json.dumps(
                 {
                     "task": params["prompt"],
+                    "selected_source_files": source_files,
                     "completed_handoffs": handoffs,
                     "omitted_handoffs": len(context.get("handoffs", []))
                     - len(handoffs),
@@ -153,6 +166,10 @@ class LocalExecutor:
             result.update(
                 provider=agent["provider"],
                 model=agent["model"],
+                source_files=[
+                    {"path": item["path"], "sha256": item["sha256"]}
+                    for item in source_files
+                ],
                 usage=generated["usage"],
                 response_id=generated["response_id"],
                 accepted=generated["complete"],

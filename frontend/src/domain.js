@@ -216,6 +216,11 @@ export function goalPayload(projectId, title, drafts, agents) {
       if (!agent.provider || !agent.model)
         throw new Error("Choose a provider and model for this agent first.");
       parameters.prompt = required(draft.prompt, "Task prompt");
+      if (draft.source_files?.length) {
+        if (draft.source_files.length > 8)
+          throw new Error("Choose at most eight source files per task.");
+        parameters.source_files = [...draft.source_files];
+      }
       parameters.max_tokens = positive(
         draft.max_tokens || "2048",
         "Output token limit",

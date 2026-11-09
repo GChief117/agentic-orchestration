@@ -453,6 +453,28 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(len(result["projects"]), 1)
         self.assertEqual((folder / "Cargo.toml").read_text(), "unchanged")
 
+    def test_imported_source_listing_is_authenticated_and_metadata_only(self):
+        source = Path(self.temp.name) / "work"
+        source.mkdir()
+        (source / "pyproject.toml").write_text("[project]\nname='work'")
+        (source / "main.py").write_text("NOT_RETURNED_IN_LISTING")
+        with self.request("/api/projects/scan", {"root": str(source)}) as response:
+            scan = json.load(response)
+        with self.request(
+            "/api/projects/import",
+            {"scan_id": scan["scan_id"], "candidate_ids": [scan["projects"][0]["id"]]},
+        ) as response:
+            project = json.load(response)["projects"][0]
+        route = f"/api/projects/{project['id']}/files"
+        with self.assertRaises(HTTPError) as error:
+            self.request(route, headers={"Authorization": ""})
+        self.assertEqual(error.exception.code, 403)
+        error.exception.close()
+        with self.request(route) as response:
+            files = json.load(response)
+        self.assertIn("main.py", [item["path"] for item in files["files"]])
+        self.assertNotIn("NOT_RETURNED_IN_LISTING", json.dumps(files))
+
     def test_invalid_request_rejected(self):
         with self.assertRaises(HTTPError) as error:
             self.request("/api/goals", [])

@@ -138,12 +138,31 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
   function createGoal() {
     const view = projectView(snapshot, selectedProject);
     if (!view) return;
-    dialog = openGoalForm(document, view, async (payload) => {
-      await api.submitGoal(payload);
-      tab = "work";
-      await afterMutation();
-      notify("Goal submitted. Eligible tasks can now run.");
-    });
+    dialog = openGoalForm(
+      document,
+      view,
+      async (payload) => {
+        await api.submitGoal(payload);
+        tab = "work";
+        await afterMutation();
+        notify("Goal submitted. Eligible tasks can now run.");
+      },
+      () => api.projectFiles(view.project.id),
+    );
+  }
+  /** Open local discovery without importing anything until the user selects projects. */
+  function importProjects(scanOnOpen = false) {
+    dialog = openImportForm(
+      document,
+      api,
+      async (projects) => {
+        selectedProject = projects[0]?.id || null;
+        tab = "overview";
+        await afterMutation();
+        notify(`${projects.length} local projects imported.`);
+      },
+      { scanOnOpen },
+    );
   }
   /** Open chart editing for an idle project, optionally focused on a clicked role. */
   function editTeam(selectedKey = null) {
@@ -221,13 +240,7 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
       } else if (button.dataset.action === "new-project") createProject();
       else if (button.dataset.action === "new-goal") createGoal();
       else if (button.dataset.action === "edit-team") editTeam();
-      else if (button.dataset.action === "import-projects")
-        dialog = openImportForm(document, api, async (projects) => {
-          selectedProject = projects[0]?.id || null;
-          tab = "overview";
-          await afterMutation();
-          notify(`${projects.length} local projects imported.`);
-        });
+      else if (button.dataset.action === "import-projects") importProjects();
       else if (button.dataset.action === "appearance")
         dialog = openAppearanceForm(document);
       else if (button.dataset.action === "providers")
@@ -255,7 +268,18 @@ export function mountApp({ document, api, pollInterval = 2000 }) {
   root.addEventListener("keydown", chartKey);
   root.innerHTML =
     '<main class="startup"><span class="eyebrow">Orchestration</span><h1>Opening your workspace…</h1><p>Loading projects, teams, and task state.</p></main>';
-  const ready = refresh();
+  const ready = refresh().then(() => {
+    const url = new URL(window.location.href);
+    if (
+      snapshot &&
+      url.searchParams.get("import") === "1" &&
+      snapshot.features?.local_tools !== false
+    ) {
+      importProjects(true);
+      url.searchParams.delete("import");
+      window.history.replaceState(null, "", url);
+    }
+  });
   const interval =
     pollInterval > 0
       ? window.setInterval(() => {

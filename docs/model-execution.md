@@ -47,3 +47,18 @@ Official API references:
 - [OpenAI text generation](https://developers.openai.com/api/docs/guides/text)
 - [Claude Messages API](https://platform.claude.com/docs/en/api/messages/create)
 - [Gemini content generation](https://ai.google.dev/api/generate-content)
+
+
+## Selected source context
+
+For imported local projects, a model task can attach up to eight source files.
+The goal editor lists safe text-file metadata; only checked files are read when
+the task runs, and their contents are sent to the selected provider. Each file is
+limited to 64 KiB and the combined context to 48,000 characters. Reads revalidate
+canonical paths and use directory descriptors to reject symlinks. Hidden files,
+common key/credential files, unsupported suffixes, and binary content are rejected.
+
+File listings are bounded to eight levels and 3,000 entries; dependency and build
+folders are skipped. Filtering in the picker preserves already-selected files.
+The receipt records selected relative paths and content hashes, not source copies.
+This feature is disabled in hosted mode and never edits the imported source files.

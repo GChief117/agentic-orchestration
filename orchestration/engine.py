@@ -12,12 +12,19 @@ from .projects import parse_project, positive_integer
 from .storage import Store
 from .providers import ProviderConnections
 from .models import ModelRuntime
+from .sources import list_source_files
 from .discovery import ProjectDiscovery, imported_definition
 
 
 class Engine:
     def __init__(
-        self, directory, *, execution_limit, target_limits=None, executor=None
+        self,
+        directory,
+        *,
+        execution_limit,
+        target_limits=None,
+        executor=None,
+        allow_source_access=True
     ):
         """Build the local runtime with explicitly supplied global execution capacity.
 
@@ -38,8 +45,11 @@ class Engine:
             for key, value in target_limits.items()
         }
         self.connection = LocalConnection(Path(directory) / "artifacts")
+        self.allow_source_access = allow_source_access
         self.models = ModelRuntime()
-        self.executor = executor or LocalExecutor(self.connection, self.models)
+        self.executor = executor or LocalExecutor(
+            self.connection, self.models, allow_source_access=allow_source_access
+        )
         self.store = Store(directory)
         self.providers = ProviderConnections(directory)
         self.discovery = ProjectDiscovery()
@@ -117,6 +127,16 @@ class Engine:
                     )
         return imported
 
+    def project_files(self, project_id):
+        """List safe text-file metadata from one imported local project; never read contents."""
+        if not self.allow_source_access:
+            raise PermissionError("Local source files are unavailable in hosted mode")
+        with self.lock:
+            project = self.store.project(project_id)
+        if not project.get("source_path"):
+            raise ValueError("Import a local project before selecting source files")
+        return list_source_files(project["source_path"])
+
     def update_team(self, project_id, document):
         """Persist chart edits for an idle project while preserving historical ownership.
 
@@ -160,9 +180,17 @@ class Engine:
             raise ValueError("Title must contain 1–120 characters")
         with self.lock:
             self._require_open()
-            self.store.project(project_id)
+            project = self.store.project(project_id)
             team = self.store.agents(project_id)
-            definitions = parse_tasks(tasks, self.connection, project_id, team)
+            definitions = parse_tasks(
+                tasks,
+                self.connection,
+                project_id,
+                team,
+                source_root=project.get("source_path")
+                if self.allow_source_access
+                else None,
+            )
             by_id = {agent["id"]: agent for agent in team}
             for task in definitions:
                 if task.capability == "model.generate" and not self.models.ready(

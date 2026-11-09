@@ -45,7 +45,7 @@ Choose **Import projects** in the workspace header, select a search folder, and 
 
 Discovery reads filenames, not project contents, and does not run repository code. It recognizes Git and common JavaScript, Python, Rust, Go, Java/Kotlin, Swift/Xcode, .NET, Ruby, PHP, C/C++, Dart, Elixir, and Docker markers. Discovery treats a detected project as one result; to find nested projects, scan that project folder directly. Hidden folders, dependency/build directories, and nested symbolic links are skipped. Scans are bounded to five directory levels, 10,000 directories, 200 results, and ten seconds; incomplete or unreadable coverage is shown in the review. Scan selections expire after 30 minutes or a new scan.
 
-Import registers the canonical source location and an editable three-role team. Re-importing the same path returns the existing project. Source files are not copied or changed, and current task execution stays inside the app’s isolated artifact workspace. The source location is retained after restart and displayed on the project overview.
+Import registers the canonical source location and an editable three-role team. Re-importing the same path returns the existing project. Source files are not copied or changed. On model tasks, select specific project files to provide real source context; generated output still goes to the app’s isolated artifact workspace. The source location is retained after restart and displayed on the project overview.
 
 Discovery routes use the same local session authorization as other APIs: `GET /api/projects/scan-roots`, `POST /api/projects/scan`, and `POST /api/projects/import`.
 
@@ -55,7 +55,7 @@ Discovery routes use the same local session authorization as other APIs: `GET /a
 2. Open a project's team editor. Select an agent, choose **Model provider** and **Model**, and connect peers by dragging a card’s **+ handle** onto another agent. Alternatively choose **Connect agents** and click two cards, or use **Works with** in the inspector.
 3. Add a goal with **Run model task** steps. Set each prompt, output artifact path, and maximum output tokens. Add dependencies wherever one step must wait for another.
 
-The scheduler enforces task order, project/agent capacity, and file conflicts. Model tasks receive the project charter, their role/instructions, team roster, and available completed outputs from explicit dependencies and collaborating agents. Dashed chart links show collaboration; solid links show reporting. Collaboration does not make tasks wait automatically. Only task dependencies impose execution order.
+The scheduler enforces task order, project/agent capacity, and file conflicts. Model tasks receive explicitly selected source files, the project charter, their role/instructions, team roster, and available completed outputs from explicit dependencies and collaborating agents. Dashed chart links show collaboration; solid links show reporting. Collaboration does not make tasks wait automatically. Only task dependencies impose execution order.
 
 Results are saved as project-scoped text artifacts with provider, model, usage, and response metadata. A completed model response is not a guarantee of factual correctness; assign a reviewer for content review. The model cannot directly execute shell commands or change project source files through this action. No provider fallback or automatic retry is performed.
 

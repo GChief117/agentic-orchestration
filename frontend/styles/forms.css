@@ -285,3 +285,31 @@ legend {
   overflow-wrap: anywhere;
   color: var(--muted);
 }
+
+/* Source attachment selection lists metadata; reading happens only during the task. */
+.source-picker {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  margin: 14px 0;
+  font-size: 12px;
+}
+.source-picker summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.source-options {
+  max-height: 220px;
+  overflow: auto;
+  margin: 12px 0;
+}
+.source-file {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+}
+.source-file span {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}

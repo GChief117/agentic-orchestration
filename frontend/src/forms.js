@@ -15,10 +15,14 @@ export { openProjectForm } from "./project-form.js";
  * @param {function(object): Promise<*>} onSubmit Persists the validated task graph.
  * @returns {HTMLDialogElement} Mounted task editor.
  */
-export function openGoalForm(document, view, onSubmit) {
+export function openGoalForm(document, view, onSubmit, loadSourceFiles = null) {
   const controller = mountDialog(document, "Define a goal", view.project.name);
   const { dialog } = controller;
   const content = dialog.querySelector("[data-content]");
+  let sourceFiles = [],
+    sourceError = "",
+    sourceTruncated = false;
+  let sourcesLoading = Boolean(view.project.source_path && loadSourceFiles);
   let title = "",
     nextId = 1;
   /**
@@ -35,6 +39,8 @@ export function openGoalForm(document, view, onSubmit) {
       content: "",
       expected: "",
       prompt: "",
+      source_files: [],
+      source_filter: "",
       max_tokens: "2048",
       compare: false,
       depends_on: [],
@@ -60,11 +66,39 @@ export function openGoalForm(document, view, onSubmit) {
           "max_tokens",
         ].map((field) => [field, value(row, field)]),
       ),
+      source_files: [
+        ...(tasks.find((task) => task.id === row.dataset.task)?.source_files ||
+          []),
+      ],
+      source_filter:
+        tasks.find((task) => task.id === row.dataset.task)?.source_filter || "",
       compare: Boolean(row.querySelector('[data-field="compare"]')?.checked),
       depends_on: [...row.querySelectorAll("[data-dependency]:checked")].map(
         (checkbox) => checkbox.value,
       ),
     }));
+  }
+  /** Render only matching filenames; file contents are not fetched by this picker. */
+  function sourceOptions(task) {
+    return (
+      sourceFiles
+        .filter((file) =>
+          file.path
+            .toLowerCase()
+            .includes((task.source_filter || "").toLowerCase()),
+        )
+        .slice(0, 100)
+        .map(
+          (file) =>
+            `<label class="source-file"><input type="checkbox" data-source-file value="${e(file.path)}" ${(task.source_files || []).includes(file.path) ? "checked" : ""}><span>${e(file.path)}</span></label>`,
+        )
+        .join("") || '<p class="muted">No matching text files.</p>'
+    );
+  }
+  /** Offer explicit read-only attachments from the selected project's source folder. */
+  function sourcePicker(task) {
+    if (!view.project.source_path) return "";
+    return `<details class="source-picker"><summary>Project source files · <span data-source-count>${(task.source_files || []).length}</span> selected</summary><p class="muted">${e(view.project.source_path)}</p><p>Choose up to 8 files. Their contents are sent to this agent’s provider when you start the task. Original files are not modified.</p>${sourcesLoading ? '<p class="muted">Loading filenames…</p>' : sourceError ? `<p role="alert">${e(sourceError)}</p>` : `<input aria-label="Filter project files" data-source-filter placeholder="Filter filenames" value="${e(task.source_filter || "")}"><div class="source-options" data-source-options>${sourceOptions(task)}</div><small>${sourceFiles.length} available files. Up to 100 matches shown.${sourceTruncated ? " Listing was limited; narrow the project folder if needed." : ""}</small>`}</details>`;
   }
   /**
    * Render task editors, constrain action choices by agent, and bind graph editing.
@@ -77,7 +111,7 @@ export function openGoalForm(document, view, onSubmit) {
         const capabilities = agent.capabilities;
         if (!capabilities.includes(task.capability))
           task.capability = capabilities[0];
-        return `<fieldset class="task-editor" data-task="${e(task.id)}"><legend>Step ${index + 1} · ${e(task.id)}</legend>${input("Task title", "title", task.title, { required: true })}<div class="form-grid"><label class="field"><span>Assigned agent</span><select aria-label="Assigned agent" data-field="agent">${view.agents.map((candidate) => `<option value="${e(candidate.key)}" ${agent.key === candidate.key ? "selected" : ""}>${e(candidate.name)} · ${e(candidate.role)}</option>`).join("")}</select></label><label class="field"><span>Action</span><select aria-label="Action" data-field="capability">${capabilities.map((cap) => `<option value="${e(cap)}" ${task.capability === cap ? "selected" : ""}>${e(ACTIONS[cap]?.label || cap)}</option>`).join("")}</select></label></div>${task.capability.startsWith("files.") || task.capability === "model.generate" ? input("Project-relative file path", "path", task.path, { required: true, hint: "For example: release/checklist.txt" }) : '<p class="muted">Checks the configured Python runtime on the local target.</p>'}${task.capability === "model.generate" ? `<p class="muted">${e(agent.provider || "No provider")} · ${e(agent.model || "No model selected")}</p>${input("Task prompt", "prompt", task.prompt || "", { required: true, textarea: true, rows: 5 })}${input("Maximum output tokens", "max_tokens", task.max_tokens || "2048", { number: true })}` : ""}${task.capability === "files.write" ? input("File contents", "content", task.content, { textarea: true }) : ""}${task.capability === "files.inspect" ? `<label class="checkbox-line"><input type="checkbox" data-field="compare" ${task.compare ? "checked" : ""}> Compare exact contents</label>${task.compare ? input("Expected contents", "expected", task.expected, { textarea: true }) : '<p class="muted">Checks that the file is readable and records its digest.</p>'}` : ""}<div class="dependency-picker"><span class="label">Wait for these tasks to be verified</span>${
+        return `<fieldset class="task-editor" data-task="${e(task.id)}"><legend>Step ${index + 1} · ${e(task.id)}</legend>${input("Task title", "title", task.title, { required: true })}<div class="form-grid"><label class="field"><span>Assigned agent</span><select aria-label="Assigned agent" data-field="agent">${view.agents.map((candidate) => `<option value="${e(candidate.key)}" ${agent.key === candidate.key ? "selected" : ""}>${e(candidate.name)} · ${e(candidate.role)}</option>`).join("")}</select></label><label class="field"><span>Action</span><select aria-label="Action" data-field="capability">${capabilities.map((cap) => `<option value="${e(cap)}" ${task.capability === cap ? "selected" : ""}>${e(ACTIONS[cap]?.label || cap)}</option>`).join("")}</select></label></div>${task.capability.startsWith("files.") || task.capability === "model.generate" ? input("Project-relative file path", "path", task.path, { required: true, hint: "For example: release/checklist.txt" }) : '<p class="muted">Checks the configured Python runtime on the local target.</p>'}${task.capability === "model.generate" ? `<p class="muted">${e(agent.provider || "No provider")} · ${e(agent.model || "No model selected")}</p>${input("Task prompt", "prompt", task.prompt || "", { required: true, textarea: true, rows: 5 })}${input("Maximum output tokens", "max_tokens", task.max_tokens || "2048", { number: true })}${sourcePicker(task)}` : ""}${task.capability === "files.write" ? input("File contents", "content", task.content, { textarea: true }) : ""}${task.capability === "files.inspect" ? `<label class="checkbox-line"><input type="checkbox" data-field="compare" ${task.compare ? "checked" : ""}> Compare exact contents</label>${task.compare ? input("Expected contents", "expected", task.expected, { textarea: true }) : '<p class="muted">Checks that the file is readable and records its digest.</p>'}` : ""}<div class="dependency-picker"><span class="label">Wait for these tasks to be verified</span>${
           tasks
             .filter((other) => other.id !== task.id)
             .map(
@@ -142,7 +176,57 @@ export function openGoalForm(document, view, onSubmit) {
       }
     };
   }
+  content.addEventListener("input", (event) => {
+    if (!event.target.matches("[data-source-filter]")) return;
+    const row = event.target.closest("[data-task]");
+    const task = tasks.find((item) => item.id === row.dataset.task);
+    task.source_filter = event.target.value;
+    row.querySelector("[data-source-options]").innerHTML = sourceOptions(task);
+  });
+  content.addEventListener("change", (event) => {
+    if (!event.target.matches("[data-source-file]")) return;
+    const row = event.target.closest("[data-task]");
+    const task = tasks.find((item) => item.id === row.dataset.task);
+    const paths = new Set(task.source_files || []);
+    if (event.target.checked) paths.add(event.target.value);
+    else paths.delete(event.target.value);
+    if (paths.size > 8) {
+      event.target.checked = false;
+      showError(
+        dialog,
+        new Error("Choose at most eight source files per task."),
+      );
+      return;
+    }
+    task.source_files = [...paths];
+    row.querySelector("[data-source-count]").textContent = paths.size;
+  });
   render();
+  if (sourcesLoading) {
+    loadSourceFiles()
+      .then((result) => {
+        sourceFiles = result.files;
+        sourceTruncated = result.truncated;
+      })
+      .catch((error) => {
+        sourceError = error.message;
+      })
+      .finally(() => {
+        sourcesLoading = false;
+        if (!dialog.isConnected) return;
+        const active = document.activeElement;
+        const field = active?.dataset.field;
+        const rowId = active?.closest("[data-task]")?.dataset.task;
+        tasks = read();
+        render();
+        const scope = rowId
+          ? [...content.querySelectorAll("[data-task]")].find(
+              (row) => row.dataset.task === rowId,
+            )
+          : content;
+        if (field) scope?.querySelector(`[data-field="${field}"]`)?.focus();
+      });
+  }
   return dialog;
 }
 

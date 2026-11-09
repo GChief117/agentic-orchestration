@@ -220,6 +220,24 @@ def make_handler(
                 )
             elif route == "/api/projects/scan-roots":
                 self.send(HTTPStatus.OK, {"roots": engine.discovery.roots()})
+            elif route.startswith("/api/projects/") and route.endswith("/files"):
+                if not local_features:
+                    self.send(
+                        HTTPStatus.BAD_REQUEST,
+                        {"error": "Local source files are unavailable in hosted mode"},
+                    )
+                else:
+                    try:
+                        self.send(
+                            HTTPStatus.OK,
+                            engine.project_files(
+                                route.removeprefix("/api/projects/").removesuffix(
+                                    "/files"
+                                )
+                            ),
+                        )
+                    except (ValueError, PermissionError, OSError) as exc:
+                        self.send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
             elif route == "/api/models":
                 self.send(HTTPStatus.OK, {"providers": engine.models.catalog()})
             elif route == "/api/providers":
@@ -330,6 +348,19 @@ def make_handler(
                     engine.update_team(project_id, data)
                     self.send(HTTPStatus.OK, {"id": project_id})
                 elif route == "/api/goals":
+                    if (
+                        not local_features
+                        and isinstance(data.get("tasks"), list)
+                        and any(
+                            isinstance(task, dict)
+                            and isinstance(task.get("parameters"), dict)
+                            and task["parameters"].get("source_files")
+                            for task in data["tasks"]
+                        )
+                    ):
+                        raise PermissionError(
+                            "Local source files are unavailable in hosted mode"
+                        )
                     goal_id = engine.submit(
                         data.get("project_id"), data.get("title"), data.get("tasks")
                     )
@@ -382,7 +413,11 @@ def main():
         )
     except ValueError as exc:
         parser.error(str(exc))
-    engine = Engine(args.data_dir, execution_limit=args.execution_limit)
+    engine = Engine(
+        args.data_dir,
+        execution_limit=args.execution_limit,
+        allow_source_access=args.mode == "local",
+    )
     token = secrets.token_urlsafe(32)
     token_path = args.data_dir / "api-token"
     try:

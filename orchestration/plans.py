@@ -1,6 +1,7 @@
 """Validate explicit task graphs before any task becomes eligible to execute."""
 
 from dataclasses import dataclass
+from .sources import source_file
 
 
 @dataclass(frozen=True)
@@ -13,7 +14,7 @@ class TaskDefinition:
     dependencies: list[int]
 
 
-def parse_tasks(tasks, connection, project_id, agents):
+def parse_tasks(tasks, connection, project_id, agents, *, source_root=None):
     """Validate an entire task graph and return normalized TaskDefinition records.
 
     Require project-owned agents, allowed capabilities, valid dependencies, and
@@ -87,6 +88,20 @@ def parse_tasks(tasks, connection, project_id, agents):
             if type(max_tokens) is not int or not 1 <= max_tokens <= 8192:
                 raise ValueError("Output token limit must be between 1 and 8192")
             parameters["max_tokens"] = max_tokens
+            source_paths = parameters.get("source_files", [])
+            if (
+                not isinstance(source_paths, list)
+                or len(source_paths) > 8
+                or any(not isinstance(path, str) for path in source_paths)
+                or len(set(source_paths)) != len(source_paths)
+            ):
+                raise ValueError("Choose at most eight distinct source files")
+            if source_paths and not source_root:
+                raise PermissionError("Source files require an imported local project")
+            for relative in source_paths:
+                source_file(source_root, relative)
+            if source_paths:
+                parameters["source_files"] = source_paths
         # A version-check subprocess has no shared terminal input or file writes.
         definitions.append(
             TaskDefinition(

@@ -83,6 +83,10 @@ export class ApiClient {
       candidate_ids: candidateIds,
     });
   }
+  /** List selectable source-file metadata from one imported project. */
+  projectFiles(projectId) {
+    return this.send(`/api/projects/${encodeURIComponent(projectId)}/files`);
+  }
   /** List API connection readiness and cached model choices without secrets. */
   models() {
     return this.send("/api/models");

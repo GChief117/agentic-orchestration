@@ -2,7 +2,12 @@ import { mountDialog, showError } from "./form-controls.js";
 import { escapeHtml as e } from "./domain.js";
 
 /** Scan a chosen local folder and import only projects explicitly checked by the user. */
-export function openImportForm(document, api, onImported) {
+export function openImportForm(
+  document,
+  api,
+  onImported,
+  { scanOnOpen = false } = {},
+) {
   const controller = mountDialog(
     document,
     "Import local projects",
@@ -110,6 +115,8 @@ export function openImportForm(document, api, onImported) {
         .map((path) => `<option value="${e(path)}"></option>`)
         .join("");
       if (!root.value) root.value = roots[0] || "";
+      if (scanOnOpen && root.value)
+        content.querySelector("[data-scan]").click();
     })
     .catch((error) => {
       if (dialog.isConnected) showError(dialog, error);
