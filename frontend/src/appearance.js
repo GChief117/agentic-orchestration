@@ -19,13 +19,21 @@ export const APPEARANCES = {
     name: "Dark graphite",
     detail: "Dark surfaces, quiet borders, and cool blue accents.",
   },
+  ocean: {
+    name: "Ocean & clay",
+    detail: "Deep teal, soft clay surfaces, and a light coastal background.",
+  },
+  plum: {
+    name: "Plum & honey",
+    detail: "Rich plum, warm honey surfaces, and creamy neutrals.",
+  },
   warm: {
     name: "Warm minimal",
     detail: "Ivory surfaces, terracotta accents, and adjustable typography.",
   },
 };
 
-export const WARM_TYPOGRAPHY = {
+export const TYPOGRAPHY = {
   editorial: "Georgia · Familiar and sturdy",
   iowan: "Iowan Old Style · Open and literary",
   baskerville: "Baskerville · Classic and refined",
@@ -34,14 +42,15 @@ export const WARM_TYPOGRAPHY = {
   times: "Times · Compact and traditional",
 };
 
-/** Change only Warm minimal's type family, retaining its colors and surfaces. */
-export function applyWarmTypography(document, name, persist = true) {
-  if (!Object.hasOwn(WARM_TYPOGRAPHY, name)) name = "editorial";
-  document.documentElement.dataset.warmTypography = name;
+/** Apply a heading font independently of the current color palette. */
+export function applyTypography(document, name, persist = true) {
+  if (!Object.hasOwn(TYPOGRAPHY, name)) name = "default";
+  if (name === "default") delete document.documentElement.dataset.typography;
+  else document.documentElement.dataset.typography = name;
   if (persist) {
     try {
       document.defaultView.localStorage.setItem(
-        "orchestration-warm-typography",
+        "orchestration-typography",
         name,
       );
     } catch {
@@ -79,16 +88,18 @@ export function initializeAppearance(document) {
     /* Use the existing appearance when storage is unavailable. */
   }
   applyAppearance(document, name, false);
-  let typography = "editorial";
+  let typography = "default";
   try {
     typography =
+      document.defaultView.localStorage.getItem("orchestration-typography") ||
       document.defaultView.localStorage.getItem(
         "orchestration-warm-typography",
-      ) || typography;
+      ) ||
+      typography;
   } catch {
     /* Retain the original type style without local storage. */
   }
-  applyWarmTypography(document, typography, false);
+  applyTypography(document, typography, false);
 }
 
 /** Preview app-wide styles immediately while retaining every existing layout. */
@@ -117,25 +128,24 @@ export function openAppearanceForm(document) {
     )
     .join(
       "",
-    )}</div></section><div class="warm-typography" data-warm-type-panel hidden><h3>Compare editorial serif headings</h3><p>Six heading styles with the same body font and warm palette. Click a sample to apply it.</p><div class="typography-options">${Object.entries(
-    WARM_TYPOGRAPHY,
+    )}</div></section><div class="typography-section" data-typography-panel><h3>Compare editorial serif headings</h3><p>Six heading styles for any color palette. Click a sample to apply it.</p><div class="typography-options">${Object.entries(
+    TYPOGRAPHY,
   )
     .map(
       ([key, label]) =>
-        `<button type="button" class="typography-option" data-warm-type="${key}" aria-pressed="false"><span class="typography-label">${label}</span><span class="typography-preview-title">A clear plan.<br>A focused team.</span><span class="typography-preview-body">Plan, build, review.<br>Projects 12 · Agents 06</span></button>`,
+        `<button type="button" class="typography-option" data-typography-option="${key}" aria-pressed="false"><span class="typography-label">${label}</span><span class="typography-preview-title">A clear plan.<br>A focused team.</span><span class="typography-preview-body">Plan, build, review.<br>Projects 12 · Agents 06</span></button>`,
     )
-    .join("")}</div></div><p data-appearance-status role="status"></p></div>`;
+    .join(
+      "",
+    )}</div><button type="button" class="text-button" data-typography-reset>Use theme default typography</button></div><p data-appearance-status role="status"></p></div>`;
   /** Reflect the selected palette without recreating controls or losing focus. */
   function update() {
     const selected = document.documentElement.dataset.theme || "original";
-    content.querySelector("[data-warm-type-panel]").hidden =
-      selected !== "warm";
-    const typography =
-      document.documentElement.dataset.warmTypography || "editorial";
-    for (const button of content.querySelectorAll("[data-warm-type]"))
+    const typography = document.documentElement.dataset.typography || "default";
+    for (const button of content.querySelectorAll("[data-typography-option]"))
       button.setAttribute(
         "aria-pressed",
-        String(button.dataset.warmType === typography),
+        String(button.dataset.typographyOption === typography),
       );
     for (const button of content.querySelectorAll("[data-brand-option]"))
       button.setAttribute(
@@ -154,15 +164,20 @@ export function openAppearanceForm(document) {
       `${APPEARANCES[selected].name} applied. Close this panel to explore the app.`;
   }
   content.addEventListener("click", (event) => {
+    if (event.target.closest("[data-typography-reset]")) {
+      applyTypography(document, "default");
+      update();
+      return;
+    }
     const brand = event.target.closest("[data-brand-option]");
     if (brand) {
       applyBrandStyle(document, brand.dataset.brandOption);
       update();
       return;
     }
-    const font = event.target.closest("[data-warm-type]");
+    const font = event.target.closest("[data-typography-option]");
     if (font) {
-      applyWarmTypography(document, font.dataset.warmType);
+      applyTypography(document, font.dataset.typographyOption);
       update();
       return;
     }

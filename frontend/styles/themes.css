@@ -227,42 +227,42 @@
 }
 
 /* Serif heading samples retain the same body font for an even comparison. */
-[data-warm-typography],
-[data-warm-type] {
-  --warm-body: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+[data-typography],
+[data-typography-option] {
+  --body-font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
-[data-warm-typography="editorial"],
-[data-warm-type="editorial"] {
-  --warm-heading: Georgia, "Times New Roman", serif;
+[data-typography="editorial"],
+[data-typography-option="editorial"] {
+  --heading-font: Georgia, "Times New Roman", serif;
 }
-[data-warm-typography="iowan"],
-[data-warm-type="iowan"] {
-  --warm-heading: "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+[data-typography="iowan"],
+[data-typography-option="iowan"] {
+  --heading-font: "Iowan Old Style", "Palatino Linotype", Palatino, serif;
 }
-[data-warm-typography="baskerville"],
-[data-warm-type="baskerville"] {
-  --warm-heading: Baskerville, "Baskerville Old Face", Georgia, serif;
+[data-typography="baskerville"],
+[data-typography-option="baskerville"] {
+  --heading-font: Baskerville, "Baskerville Old Face", Georgia, serif;
 }
-[data-warm-typography="literary"],
-[data-warm-type="literary"] {
-  --warm-heading: "Palatino Linotype", Palatino, "Book Antiqua", serif;
+[data-typography="literary"],
+[data-typography-option="literary"] {
+  --heading-font: "Palatino Linotype", Palatino, "Book Antiqua", serif;
 }
-[data-warm-typography="didot"],
-[data-warm-type="didot"] {
-  --warm-heading: Didot, "Bodoni MT", Georgia, serif;
+[data-typography="didot"],
+[data-typography-option="didot"] {
+  --heading-font: Didot, "Bodoni MT", Georgia, serif;
 }
-[data-warm-typography="times"],
-[data-warm-type="times"] {
-  --warm-heading: Times, "Times New Roman", serif;
+[data-typography="times"],
+[data-typography-option="times"] {
+  --heading-font: Times, "Times New Roman", serif;
 }
-:root[data-theme="warm"][data-warm-typography] {
-  font-family: var(--warm-body);
+:root[data-typography] {
+  font-family: var(--body-font);
 }
-:root[data-theme="warm"][data-warm-typography] h1,
-:root[data-theme="warm"][data-warm-typography] h2 {
-  font-family: var(--warm-heading);
+:root[data-typography] h1,
+:root[data-typography] h2 {
+  font-family: var(--heading-font);
 }
-.warm-typography {
+.typography-section {
   margin-top: 24px;
 }
 .typography-options {
@@ -281,7 +281,7 @@
   border-radius: 10px;
   background: var(--surface);
   color: var(--ink);
-  font-family: var(--warm-body);
+  font-family: var(--body-font);
   min-width: 0;
 }
 .typography-option[aria-pressed="true"] {
@@ -297,13 +297,13 @@
   color: var(--muted);
 }
 .typography-preview-title {
-  font-family: var(--warm-heading);
+  font-family: var(--heading-font);
   font-size: 25px;
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
 .typography-preview-body {
-  font-family: var(--warm-body);
+  font-family: var(--body-font);
   font-size: 13px;
   line-height: 1.7;
   color: var(--muted);
@@ -350,7 +350,7 @@
   margin-top: 5px;
 }
 .brand-variant-editorial .brand-title {
-  font-family: var(--warm-heading, Georgia, "Times New Roman", serif);
+  font-family: var(--heading-font, Georgia, "Times New Roman", serif);
   font-size: 23px;
   font-weight: 400;
 }
@@ -498,18 +498,70 @@
     serif;
 }
 .brand-variant-outlined .brand-title {
-  font-family: var(--warm-heading, Georgia, serif);
+  font-family: var(--heading-font, Georgia, serif);
   font-weight: 400;
 }
 .brand-variant-underline .brand-title {
   display: inline-block;
   padding-bottom: 5px;
   border-bottom: 1px solid var(--green);
-  font-family: var(--warm-heading, Georgia, serif);
+  font-family: var(--heading-font, Georgia, serif);
   font-size: 23px;
   font-weight: 400;
 }
 .brand-variant-underline small {
   margin-top: 7px;
   letter-spacing: 2px;
+}
+
+/* Additional complementary palettes share the same typography controls. */
+:root[data-theme="ocean"] {
+  color-scheme: light;
+  --theme-text: #213b3a;
+  --theme-secondary: #526d6b;
+  --theme-border: #d0dcd6;
+  --theme-surface: #fffdf8;
+  --theme-soft: #f2e8df;
+  --theme-accent: #256765;
+  --theme-inverse: #213b3a;
+  --theme-on-accent: #ffffff;
+  --theme-shadow: #213b3a18;
+  --theme-canvas: #f4f6f1;
+  --theme-nav: #e7efea;
+  --theme-nav-text: #526d6b;
+  --theme-radius: 11px;
+}
+:root[data-theme="plum"] {
+  color-scheme: light;
+  --theme-text: #3d2c3d;
+  --theme-secondary: #756074;
+  --theme-border: #dfd2d9;
+  --theme-surface: #fffdf8;
+  --theme-soft: #f5ead0;
+  --theme-accent: #734769;
+  --theme-inverse: #3d2c3d;
+  --theme-on-accent: #ffffff;
+  --theme-shadow: #3d2c3d18;
+  --theme-canvas: #f9f4f3;
+  --theme-nav: #eee2e8;
+  --theme-nav-text: #756074;
+  --theme-radius: 11px;
+}
+.appearance-swatches[data-palette="ocean"] i:nth-child(1) {
+  background: #256765;
+}
+.appearance-swatches[data-palette="ocean"] i:nth-child(2) {
+  background: #f2e8df;
+}
+.appearance-swatches[data-palette="ocean"] i:nth-child(3) {
+  background: #e7efea;
+}
+.appearance-swatches[data-palette="plum"] i:nth-child(1) {
+  background: #734769;
+}
+.appearance-swatches[data-palette="plum"] i:nth-child(2) {
+  background: #f5ead0;
+}
+.appearance-swatches[data-palette="plum"] i:nth-child(3) {
+  background: #eee2e8;
 }
