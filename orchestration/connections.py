@@ -14,6 +14,8 @@ class LocalConnection:
         "bridge.workspace.open",
         "bridge.postgres.prepare",
         "bridge.pgadmin.register",
+        "bridge.aws.login",
+        "bridge.aws.status",
     )
 
     def __init__(self, workspace):

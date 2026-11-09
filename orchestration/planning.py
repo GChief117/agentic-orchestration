@@ -7,6 +7,7 @@ import uuid
 
 from .plans import parse_tasks
 from .postgres_setup import SETUP_CAPABILITIES, validate_setup_parameters
+from .aws_access import AWS_CAPABILITIES, validate_aws_parameters
 from .projects import text
 from .estimates import estimate_plan
 from .delivery import parse_deliverable, require_renderer, visual_story_instructions
@@ -19,6 +20,8 @@ WORKSPACE_ACTIONS = (
     "bridge.workspace.open",
     "bridge.postgres.prepare",
     "bridge.pgadmin.register",
+    "bridge.aws.login",
+    "bridge.aws.status",
 )
 
 
@@ -274,6 +277,8 @@ def _tasks(plan, source_paths, namespace):
                 "Notes source task" if field == "content_task" else "Notes content",
                 80 if field == "content_task" else 48000,
             )
+        elif capability in AWS_CAPABILITIES:
+            task["parameters"] = validate_aws_parameters(capability, params)
         elif capability in SETUP_CAPABILITIES:
             task["parameters"] = validate_setup_parameters(capability, params)
         elif capability == "bridge.workspace.open":
@@ -459,6 +464,8 @@ def propose_goal(
         'bridge.workspace.open opens the configured VS Code workspace and pgAdmin on the connected host; its parameters are {apps:["vscode","pgadmin"]}. '
         "bridge.postgres.prepare creates only missing local development databases on the configured PostgreSQL 18 service, without migrations or seed data. "
         "bridge.pgadmin.register adds that localhost connection to the initialized pgAdmin desktop registry. Both accept parameters={}. "
+        "bridge.aws.login opens the official AWS sign-in flow for the default local profile and requires the user to complete any Safari sign-in or MFA prompt. "
+        "bridge.aws.status checks saved authentication without returning credentials. Both accept parameters={}; launching sign-in is not proof of authentication. "
         "These are real changes on the configured host, not a proposal or simulated result. "
         "Do not invent additional tools, arbitrary commands, app paths, or remote destinations. "
         "Reporting lines describe ownership, while explicit "

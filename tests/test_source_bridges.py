@@ -72,11 +72,13 @@ class SourceBridgeTests(unittest.TestCase):
             editor_workspace=str(self.root / "Polaris.code-workspace"),
             editor_profile="Polaris",
             postgres_enabled=True,
+            aws_login_enabled=True,
         )
         self.write_config()
         self.assertTrue(self.bridge.configured("project123"))
         for field, value in (
             ("postgres_enabled", "true"),
+            ("aws_login_enabled", "true"),
             ("editor_workspace", "/tmp/outside.code-workspace"),
             ("editor_workspace", str(self.root / "project.json")),
             ("editor_profile", "bad\nprofile"),

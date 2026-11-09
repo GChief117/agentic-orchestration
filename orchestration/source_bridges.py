@@ -216,6 +216,7 @@ class SourceBridges:
                 "editor_workspace",
                 "editor_profile",
                 "postgres_enabled",
+                "aws_login_enabled",
             }
         ):
             raise ValueError("Source bridge target has invalid configuration fields")
@@ -289,6 +290,11 @@ class SourceBridges:
             raise ValueError("Notes capability must be explicitly enabled or disabled")
         if "postgres_enabled" in entry and type(entry["postgres_enabled"]) is not bool:
             raise ValueError("PostgreSQL setup must be explicitly enabled or disabled")
+        if (
+            "aws_login_enabled" in entry
+            and type(entry["aws_login_enabled"]) is not bool
+        ):
+            raise ValueError("AWS sign-in must be explicitly enabled or disabled")
         if "demo_directory" in entry:
             demo = entry["demo_directory"]
             if (

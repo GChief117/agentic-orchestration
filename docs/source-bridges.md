@@ -40,7 +40,8 @@ Optional settings grant bounded actions to agents assigned those capabilities:
   "notes_enabled": true,
   "editor_workspace": "/Users/developer/Projects/Development.code-workspace",
   "editor_profile": "Development",
-  "postgres_enabled": false
+  "postgres_enabled": false,
+  "aws_login_enabled": false
 }
 ```
 
@@ -49,5 +50,7 @@ Optional settings grant bounded actions to agents assigned those capabilities:
 `bridge.workspace.open` opens the configured VS Code workspace/profile and pgAdmin on the connected Mac. The workspace file must be inside the configured source root. Its receipt separates successful launches from observed window visibility and positioning; macOS Accessibility permissions can prevent the latter.
 
 Setting `postgres_enabled` to `true` enables the current macOS/Homebrew PostgreSQL 18 setup adapter. `bridge.postgres.prepare` creates only missing `datalake`, `accelerate`, `eab_dev`, and `scoring` databases at `127.0.0.1:5432`, using the connected OS user's password-free local connection. It does not migrate, seed, or replace databases. `bridge.pgadmin.register` adds that local server through pgAdmin's official importer, preserving existing connections and storing no password. Launch pgAdmin once first to initialize its desktop registry; refresh its server tree after registration. Both actions accept empty parameters and fail if the configured local service or desktop registry is unavailable.
+
+Setting `aws_login_enabled` to `true` permits `bridge.aws.login` and `bridge.aws.status`. Login starts the official AWS CLI Console sign-in for the local `default` profile with Safari selected. The user completes any password, MFA, and consent prompts. Status checks authentication without returning credentials or identity details. The CLI owns its credential storage; the app does not copy it. A successful launch receipt means that the sign-in process started, not that authentication finished. These actions accept empty parameters and do not grant package, database, or cloud administration access beyond the user's existing AWS permissions.
 
 These settings are operator-controlled private configuration. A model cannot provide executable paths, SSH identities, or arbitrary shell commands as task parameters. All connected capabilities are disabled in hosted mode.

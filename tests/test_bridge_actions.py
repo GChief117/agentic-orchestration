@@ -17,6 +17,7 @@ import zipfile
 
 from orchestration.bridge_actions import BridgeActions, _REMOTE_ACTIONS
 from orchestration.postgres_setup import SETUP_CAPABILITIES
+from orchestration.aws_access import AWS_CAPABILITIES
 
 
 def remote_namespace():
@@ -126,6 +127,20 @@ class BridgeActionTests(unittest.TestCase):
         self.bridges.entry["editor_workspace"] = "/projects/Polaris.code-workspace"
         self.bridges.entry.pop("agent_command")
         self.assertFalse(self.adapter.ready("project", "bridge.workspace.open"))
+
+    def test_aws_actions_require_opt_in_and_reject_task_commands(self):
+        for capability in AWS_CAPABILITIES:
+            with self.subTest(capability=capability):
+                self.assertFalse(self.adapter.ready("project", capability))
+                self.bridges.entry["aws_login_enabled"] = True
+                self.assertTrue(self.adapter.ready("project", capability))
+                with self.assertRaises(ValueError):
+                    self.adapter.execute("project", capability, {"profile": "other"})
+                self.adapter.execute("project", capability, {})
+                payload = self.calls[-1][1]
+                self.assertTrue(payload["aws_login_enabled"])
+                self.assertEqual(payload["parameters"], {})
+                del self.bridges.entry["aws_login_enabled"]
 
     def test_database_setup_requires_explicit_flag_and_execution_bridge(self):
         for flag in (None, False, "true", 1):

@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from .sources import source_file
 from .postgres_setup import SETUP_CAPABILITIES, validate_setup_parameters
+from .aws_access import AWS_CAPABILITIES, validate_aws_parameters
 
 
 @dataclass(frozen=True)
@@ -82,6 +83,9 @@ def parse_tasks(
             ):
                 raise ValueError("A Notes draft needs bounded text content")
             resources = [("bridge-notes:" + project_id, "write")]
+        elif capability in AWS_CAPABILITIES:
+            parameters = validate_aws_parameters(capability, parameters)
+            resources = [("bridge-aws-login:" + project_id, "write")]
         elif capability in SETUP_CAPABILITIES:
             parameters = validate_setup_parameters(capability, parameters)
             resources = [("bridge-local-database:" + project_id, "write")]

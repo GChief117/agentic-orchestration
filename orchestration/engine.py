@@ -870,6 +870,8 @@ class Engine:
                     "bridge.workspace.open",
                     "bridge.postgres.prepare",
                     "bridge.pgadmin.register",
+                    "bridge.aws.login",
+                    "bridge.aws.status",
                 )
                 if self.bridge_actions
                 and self.bridge_actions.ready(project["id"], capability)

@@ -13,6 +13,7 @@ import shlex
 import zipfile
 
 from .cli_models import CLIRuntime
+from .aws_access import AWS_CAPABILITIES, REMOTE_AWS_ACCESS, validate_aws_parameters
 from .postgres_setup import (
     REMOTE_POSTGRES_SETUP,
     SETUP_CAPABILITIES,
@@ -494,6 +495,8 @@ def demo_launch(payload):
             config[project_id]["editor_profile"] = payload.get("editor_profile", "Default")
         if payload.get("postgres_enabled") is True:
             config[project_id]["postgres_enabled"] = True
+        if payload.get("aws_login_enabled") is True:
+            config[project_id]["aws_login_enabled"] = True
         atomic_json(data / "source-bridges.json", config)
         installation.update(project_id=project_id, state="seeded")
         atomic_json(record, installation)
@@ -525,6 +528,7 @@ def demo_launch(payload):
 
 '''
     + REMOTE_POSTGRES_SETUP
+    + REMOTE_AWS_ACCESS
     + r'''
 def main():
     """Verify the target before selecting one of the fixed allowed actions."""
@@ -545,6 +549,10 @@ def main():
         result = postgres_prepare(payload)
     elif action == "bridge.pgadmin.register":
         result = pgadmin_register(payload)
+    elif action == "bridge.aws.login":
+        result = aws_login(payload)
+    elif action == "bridge.aws.status":
+        result = aws_status(payload)
     elif action == "bridge.demo.launch":
         if sys.version_info < (3, 10):
             raise ValueError("Demo launch needs Python 3.10+ in the target login environment")
@@ -583,6 +591,7 @@ class BridgeActions:
                 "bridge.workspace.open",
             }
             | SETUP_CAPABILITIES
+            | AWS_CAPABILITIES
         ):
             return False
         if not getattr(self.source_bridges, "enabled", True):
@@ -593,13 +602,15 @@ class BridgeActions:
             "bridge.demo.launch": "demo_directory",
             "bridge.workspace.open": "editor_workspace",
             **{action: "postgres_enabled" for action in SETUP_CAPABILITIES},
+            **{action: "aws_login_enabled" for action in AWS_CAPABILITIES},
         }
         if not entry or not entry.get("agent_command"):
             return False
         value = entry.get(required[capability])
         return (
             value is True
-            if capability == "bridge.notes.create" or capability in SETUP_CAPABILITIES
+            if capability == "bridge.notes.create"
+            or capability in SETUP_CAPABILITIES | AWS_CAPABILITIES
             else bool(value)
         )
 
@@ -680,6 +691,11 @@ class BridgeActions:
                 or any(c in note_id for c in "\x00\r\n")
             ):
                 raise ValueError("Choose a valid app-owned note identity")
+        elif capability in AWS_CAPABILITIES:
+            payload.update(
+                parameters=validate_aws_parameters(capability, parameters),
+                aws_login_enabled=entry.get("aws_login_enabled") is True,
+            )
         elif capability in SETUP_CAPABILITIES:
             payload.update(
                 parameters=validate_setup_parameters(capability, parameters),
@@ -718,6 +734,7 @@ class BridgeActions:
                 payload["editor_workspace"] = entry["editor_workspace"]
                 payload["editor_profile"] = entry.get("editor_profile", "Default")
             payload["postgres_enabled"] = entry.get("postgres_enabled") is True
+            payload["aws_login_enabled"] = entry.get("aws_login_enabled") is True
         encoded = json.dumps(payload, ensure_ascii=False).encode()
         if len(encoded) > MAX_ACTION_INPUT:
             raise ValueError("Bridge action input exceeds its size limit")
@@ -730,6 +747,8 @@ class BridgeActions:
                 "bridge.demo.launch": "Preparing the isolated demo on the connected Mac",
                 "bridge.postgres.prepare": "Preparing the four local development databases on the connected Mac",
                 "bridge.pgadmin.register": "Registering the local PostgreSQL connection in pgAdmin on the connected Mac",
+                "bridge.aws.login": "Opening the official AWS sign-in flow on the connected Mac",
+                "bridge.aws.status": "Checking the connected Mac's saved AWS authentication",
             }
             progress(
                 {
