@@ -12,3 +12,9 @@ Each task has an owner and acceptance criteria. Read and write claims describe c
 Try moving `verify_release` into the third batch: validation should reject both the unsatisfied dependency and the overlapping write/read claim on `release-document`.
 
 Passing validation proves only the documented structural properties. It does not establish source accuracy, test quality, successful execution, or goal acceptance.
+
+## Standalone SQLite reference
+
+The [SQLite shell](sqlite-shell/README.md) is a single-file, standard-library
+Python tool with an optional empty context, task and receipt schema. It runs
+independently of the application and includes synthetic tests.
